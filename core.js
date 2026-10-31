@@ -8,6 +8,7 @@ import { SHIPS, GUNS, MISSILES, CAST } from "./story.js";
 import * as M from "./models.js";
 import { drawPortrait } from "./portraits.js";
 import * as CK from "./cockpits.js";
+import * as IK from "./interior.js";
 
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const K = 0.5;               // world units per second per KPS
@@ -692,20 +693,70 @@ function loadNav(i, first) {
   if (ms.id === "m12" && i === 2) C.flak = 1;
 }
 
+// launch tube: an armoured catapult bore 22 m wide and 14 m high, running z 10..450 (the fighter starts at z 400 and is
+// thrown out the open end at z 10). Built from the interior kit like the ship's rooms; rotating beacons spin on the roof.
 function buildTube() {
-  const g = new THREE.Group();
-  const T = M.tex().concord1;
-  const wall = new THREE.MeshStandardMaterial({ color: 0x5a606a, map: T.map, bumpMap: T.bump, bumpScale: 2, roughness: 0.6, metalness: 0.6, side: THREE.BackSide });
-  const box = new THREE.Mesh(new THREE.BoxGeometry(22, 14, 440), wall); box.position.set(0, 2, 230); g.add(box);
-  const glowA = new THREE.MeshBasicMaterial({ color: 0xffc070 }), glowB = new THREE.MeshBasicMaterial({ color: 0x60b0ff }), red = new THREE.MeshBasicMaterial({ color: 0xff3020 });
-  for (let z = 20; z < 440; z += 14) {
-    for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 5), glowA); l.position.set(s * 10.7, 7.6, z); g.add(l); const l2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 2), glowB); l2.position.set(s * 10.7, -3.5, z + 6); g.add(l2); }
-    const f = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.2), z % 28 ? glowB : red); f.position.set(0, -4.9, z); g.add(f);
-    const rib = new THREE.Mesh(new THREE.BoxGeometry(22, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0x3a3e46, roughness: 0.5, metalness: 0.7 })); rib.position.set(0, 8.4, z); g.add(rib);
+  const root = new THREE.Group(), g = new THREE.Group(); g.position.y = -5; root.add(g);
+  const K = new IK.Kit(), H = 14, X = 10.95, Z0 = 10, Z1 = 450;
+  const wallT = IK.bulkheadTex({ base: "#3a4048", accent: "#d8b020", th: H / 2, tw: 4, seed: 41, deck: "2", frame: 3 });
+  IK.floorPlane(g, -X, X, Z0, Z1, 0, IK.deckPlateTex({ base: "#2e3236", m: 4, tread: true, seed: 43 }), 4);
+  IK.ceilingPlane(g, -X, X, Z0, Z1, H, IK.ceilingTex({ base: "#1c2026", m: 4, seed: 45, lights: false }), 4);
+  const Wl = IK.run([-X, Z1], [-X, Z0]), Wr = IK.run([X, Z0], [X, Z1]);
+  for (const R of [Wl, Wr]) {
+    IK.wallPlane(g, R, H, wallT, { bay: 4, tileH: H / 2 });
+    IK.ribs(K, R, { H, every: 8, from: 4, w: 0.7, d: 0.5, bolt: 0.6, knee: true });
+    IK.pipeRun(K, R, { y: 2.0, d: 0.3, r: 0.16, flange: 4, band: "paintYellow" });
+    IK.pipeRun(K, R, { y: 2.7, d: 0.24, r: 0.1, flange: 4, band: R === Wl ? "paintBlue" : "paintRed" });
+    IK.conduits(K, R, { y: 5.6, d: 0.12, n: 4 });
+    IK.cableTray(K, R, { y: 11.6, d: 0.45, w: 0.6 });
+    IK.baseboard(K, R, {});
+    for (let s2 = 8; s2 < R.L - 4; s2 += 32) { IK.junctionBox(K, R, s2, 4.2, { w: 0.8, h: 1.0, d: 0.25 }); IK.wallVent(K, R, s2 + 16, 8.4, 1.4, 0.7); IK.emergencyLight(K, R, s2 + 8, 6.8, "lightA"); }
+    // lit guide strips: amber up high, blue down low, every bay
+    for (let s2 = 6; s2 < R.L; s2 += 8) { K.box(4.6, 0.14, 0.06, "lightA", R.at(s2, 12.4, 0.05), [0, R.ry, 0]); K.box(1.8, 0.1, 0.06, "lightB", R.at(s2 + 4, 0.9, 0.05), [0, R.ry, 0]); }
+    // hazard band along the foot of each wall
+    for (let s2 = 0.5; s2 < R.L; s2 += 1.6) K.box(0.8, 0.5, 0.04, "paintYellow", R.at(s2, 0.25, 0.03), [0, R.ry, 0]);
   }
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 440), new THREE.MeshStandardMaterial({ color: 0x2a2c30, metalness: 0.9, roughness: 0.3 })); rail.position.set(0, -4.6, 230); g.add(rail);
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(22, 14), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 })); door.position.set(0, 2, 10); g.add(door);
-  return g;
+  // roof: transverse I-beams at every rib, a centre cable spine, flush light panels between beams
+  for (let z = Z0 + 4; z < Z1; z += 8) { IK.iBeam(K, [-X, H - 0.7, z], [X, H - 0.7, z], { h: 1.0, w: 0.5 }); for (const x of [-6, 6]) K.box(3.2, 0.08, 1.4, "lightC", [x, H - 0.05, z + 4]); }
+  K.box(1.2, 0.5, Z1 - Z0, "dark", [0, H - 0.3, (Z0 + Z1) / 2]); for (let z = Z0 + 2; z < Z1; z += 2) K.box(1.3, 0.12, 0.15, "metal", [0, H - 0.58, z]);
+  // catapult: twin rails in a recessed trench, shuttle sled, deck chase lights and edge hazard paint
+  for (const x of [-1.6, 1.6]) { K.box(0.5, 0.35, Z1 - Z0, "steel", [x, 0.18, (Z0 + Z1) / 2]); K.box(0.9, 0.08, Z1 - Z0, "dark", [x, 0.03, (Z0 + Z1) / 2]); }
+  K.box(2.6, 0.04, Z1 - Z0, "black", [0, 0.02, (Z0 + Z1) / 2]);
+  K.rbox(4.4, 0.5, 6, 0.08, "paintYellow", [0, 0.45, 398]); K.box(3.6, 0.6, 1.2, "dark", [0, 0.9, 395.6]); for (const x of [-1.6, 1.6]) K.cyl(0.35, 0.35, 0.5, "rubber", [x, 0.4, 401], [0, 0, Math.PI / 2], 14);
+  for (let z = Z0 + 3; z < Z1; z += 6) { for (const x of [-7.5, 7.5]) K.box(0.6, 0.06, 2.4, "lightB", [x, 0.03, z]); K.box(0.5, 0.06, 1.2, "lightG", [0, 0.04, z + 3]); }
+  for (const x of [-X + 1.2, X - 1.2]) for (let z = Z0 + 1; z < Z1; z += 2.4) K.box(1.6, 0.03, 0.9, (Math.round(z / 2.4) % 2) ? "paintYellow" : "black", [x, 0.02, z], [0, x < 0 ? 0.6 : -0.6, 0]);
+  // blast-door frames every 60 m: thick chevroned rings with red marker lamps
+  for (let z = 70; z < Z1; z += 60) {
+    for (const x of [-X + 0.6, X - 0.6]) { K.box(1.2, H, 1.6, "metal", [x, H / 2, z]); for (let y = 0.6; y < H; y += 1.4) K.box(0.05, 0.7, 1.2, "paintYellow", [x + (x < 0 ? 0.62 : -0.62), y, z], [0, 0, x < 0 ? 0.5 : -0.5]); K.box(0.2, 0.4, 0.4, "lightR", [x + (x < 0 ? 0.7 : -0.7), H - 2, z]); }
+    K.box(2 * X, 1.2, 1.6, "metal", [0, H - 0.6, z]); for (let x = -X + 1; x < X; x += 1.4) K.box(0.7, 0.05, 1.2, "paintYellow", [x, H - 1.22, z], [0, 0, 0.5]);
+  }
+  // the mouth at z 10: a heavy armoured lip with hazard chevrons and green go-lights, open to space
+  for (const x of [-X + 0.9, X - 0.9]) { K.box(1.8, H, 3, "metal", [x, H / 2, Z0 + 1.5]); for (let y = 0.8; y < H; y += 1.6) K.box(0.05, 0.9, 2.4, "paintYellow", [x + (x < 0 ? 0.92 : -0.92), y, Z0 + 1.5], [0, 0, x < 0 ? 0.55 : -0.55]); }
+  K.box(2 * X, 1.8, 3, "metal", [0, H - 0.9, Z0 + 1.5]); K.box(2 * X, 0.9, 3, "metal", [0, 0.45, Z0 + 1.5]);
+  for (let x = -X + 2; x < X - 1; x += 2) { K.box(0.5, 0.25, 0.25, "lightG", [x, H - 1.85, Z0 + 0.3]); K.box(0.5, 0.25, 0.25, "lightG", [x, 0.95, Z0 + 0.3]); }
+  // closed blast door behind the fighter
+  K.box(2 * X, H, 1.2, "paintGrey", [0, H / 2, Z1 + 0.6]); K.box(0.15, H, 1.3, "black", [0, H / 2, Z1 + 0.5]); for (let y = 1; y < H; y += 2) for (const x of [-6, 6]) K.box(4, 0.3, 0.2, "dark", [x, y, Z1 - 0.1]);
+  K.build(g);
+  // stencils on the walls
+  for (const z of [380, 260, 140]) { IK.signPlate(g, Wl, Z1 - z, 9.6, "TUBE 3", "CATAPULT · CENTRE", { w: 3.4, h: 0.8, col: "#e8c060" }); IK.signPlate(g, Wr, z - Z0, 9.6, "CLEAR THE BORE", "LAUNCH IN PROGRESS", { w: 3.6, h: 0.8, col: "#ff6a40" }); }
+  // rotating beacons on the roof: amber and red, each a housing, a lit lamp and a sweeping light beam
+  const beacons = [], beamTex = M.tex().glow;
+  for (let z = 30, i = 0; z < Z1; z += 36, i++) for (const x of [-5, 5]) {
+    const red = (i + (x > 0 ? 1 : 0)) % 2 === 0, col = red ? 0xff2a10 : 0xffa020;
+    const b = new THREE.Group(); b.position.set(x, H - 0.25, z); g.add(b);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.35, 16), new THREE.MeshStandardMaterial({ color: 0x1a1c20, metalness: 0.6, roughness: 0.5 })); b.add(base);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 })); dome.position.y = -0.15; b.add(dome);
+    const rot = new THREE.Group(); rot.position.y = -0.4; b.add(rot);
+    for (const side of [0, Math.PI]) {
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.9, 7, 16, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.035, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      beam.geometry.translate(0, -3.5, 0); beam.rotation.set(Math.PI / 2 - 0.35, side, 0); rot.add(beam);
+    }
+    const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: beamTex, color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); flare.scale.setScalar(1.4); flare.position.y = -0.2; b.add(flare);
+    beacons.push({ rot, flare, dome, ph: Math.random() * 6.28, sp: 5 + Math.random() * 1.5 });
+  }
+  root.add(new THREE.HemisphereLight(0xc8d0e0, 0x2a2420, 0.9));
+  root.userData.tick = dt => { for (const b of beacons) { b.ph += dt * b.sp; b.rot.rotation.y = b.ph; const k = 0.6 + 0.4 * Math.abs(Math.sin(b.ph)); b.flare.material.opacity = k * 0.8; b.flare.scale.setScalar(1.0 + k * 0.9); } };
+  return root;
 }
 export function spawnGroup(g) {
   const team = SHIPS[g.type].faction === "vharr" ? "vharr" : "concord";
@@ -1530,6 +1581,7 @@ function stepFlight(dt) {
   C.stats.navs[C.navIdx] = C.stats.navs[C.navIdx] || {}; C.stats.navs[C.navIdx].visited = true;
   if (C.state === "launch") {
     const t = C.stateT, ck = C.cockpit;
+    if (C.tube && C.tube.userData.tick) C.tube.userData.tick(dt);
     ck.userData.power = clamp((t - 0.6) / 3.0, 0, 1);
     sfx.engine(clamp((t - 0.5) / 3.5, 0, 1) * 0.5 + (t > 4 ? 0.6 : 0), t > 4);
     if (t > 0.5 && !C.ls1) { C.ls1 = 1; C.comms.push({ who: "comms", text: `${C.camp.callsign || "Vigil"}, Halcyon flight control. Tube three is hot. Bring your systems up.` }); sfx.cue("u_powerup", 0.5, {}, 440, 0.4, 0.06, "sine"); }

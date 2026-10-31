@@ -388,7 +388,7 @@ export function buildCockpit(type = "kestrel") {
   }
   // ---- canopy glass
   const glassM = new THREE.MeshPhysicalMaterial({ color: T.glass, transparent: true, opacity: 0.05, roughness: 0.02, metalness: 0, clearcoat: 1, depthWrite: false, side: THREE.BackSide });
-  const bub = new THREE.Mesh(new THREE.SphereGeometry(2.6, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.55), glassM); bub.position.set(0, -0.4, -0.2); bub.scale.set(0.85, 0.85, 0.95); g.add(bub);
+  const bub = new THREE.Mesh(new THREE.SphereGeometry(2.6, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.55), glassM); bub.position.set(0, -0.4, -0.2); bub.scale.set(0.85, 0.85, 0.95); g.add(bub); g.userData.glass = bub;
   // ---- pilot: anatomical seated body (MakeHuman CC0), right glove on the stick
   const stick = new THREE.Group(); g.add(stick);
   const armPivot = new THREE.Group(); g.add(armPivot);

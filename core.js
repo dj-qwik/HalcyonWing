@@ -651,7 +651,7 @@ export function startMission(mission, camp, onEnd) {
   C.escorts = (mission.escort || []).map((e, i) => { const s = new Ship(e.type, "concord", { id: e.id, name: e.name }); s.escort = true; s.keep = true; s.slot = i; return addShip(s); });
   C.navIdx = 0; C.result = null; C.dead = false; C.view = "cockpit"; C.comms = []; C.curComm = null; C.msgs = []; C.finaleT = undefined; C.carrierLostT = 0; C.sparkDone = false; C.ghost = null; C.scriptHold = false; C.commsOpen = false; C.dyingCaps = []; C.debris = []; C.t = 0;
   loadNav(0, true);
-  C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1; C.cracks = null; C.hitDirs = []; C.kick = null; C.shake = 0;   // fade in, so the frames before the cockpit camera settles in the tube never show
+  C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1; clearCracks(); C.hitDirs = []; C.kick = null; C.shake = 0; C.ckDmg = null;   // fade in, so the frames before the cockpit camera settles in the tube never show
   sfx.play("tense");
 }
 
@@ -902,6 +902,8 @@ function fireGuns(s, inheritVel) {
   if (s.energy < cost) return false;
   s.energy -= cost;
   const f = s.forward(_b);
+  const amb = s.isPlayer && s.ambushT > C.t;   // Wraith: fire within two seconds of decloaking hits far harder
+  if (amb && !s._ambMsg) { s._ambMsg = 1; C.msgs.push({ t: 2, text: "AMBUSH STRIKE — DOUBLE DAMAGE" }); }
   // convergence for player
   let conv = 600; if (s.isPlayer && C.target && C.target.alive) conv = clamp(C.target.pos.distanceTo(s.pos), 120, 1400);
   for (const g of list) {
@@ -909,11 +911,17 @@ function fireGuns(s, inheritVel) {
     const aimP = _a.copy(s.pos).addScaledVector(f, conv);
     const dir = aimP.sub(o).normalize();
     if (!s.isPlayer) dir.add(new V3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(0.012 * (1.2 - s.ai.skill))).normalize();
-    fireBolt(s, o, dir, g.type, inheritVel || s.vel);
-    spawnPart(o, s.vel, 0.06, 1.5, 3, GUNS[g.type].color, 0x000000, 1, true);
+    const bolt = fireBolt(s, o, dir, g.type, inheritVel || s.vel), sz = GUNS[g.type].size;
+    if (amb) { bolt.dmg *= 2.2; bolt.m.scale.multiplyScalar(1.6); }
+    spawnPart(o, s.vel, 0.06 + sz * 0.02, 1.5 * sz * (amb ? 1.6 : 1), 3 * sz * (amb ? 1.6 : 1), GUNS[g.type].color, 0x000000, 1, true);
   }
   s.gunCd = Math.max(...list.map(g => GUNS[g.type].rof)) * (s.gunMode === 0 ? 1 : 0.5);
-  if (s.isPlayer) { C.stats.shots += list.length; sfx.gun(list[0].type); } else sfx.gun(list[0].type, s.pos);
+  if (s.isPlayer) { C.stats.shots += list.length; sfx.gun(list[0].type);
+    // recoil: heavier guns shove the nose and rattle the cockpit harder
+    const heft = list.reduce((a, g) => a + GUNS[g.type].dmg * GUNS[g.type].size, 0) * (amb ? 1.6 : 1);
+    const kk = C.kick || (C.kick = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }); kk.vx += heft * 0.028; kk.vz += (Math.random() - 0.5) * heft * 0.01;
+    C.shake = Math.min(0.5, (C.shake || 0) + heft / 1100); if (heft > 40) sfx.thud(Math.min(0.5, heft / 160));
+  } else sfx.gun(list[0].type, s.pos);
   return true;
 }
 
@@ -921,21 +929,27 @@ function fireGuns(s, inheritVel) {
 function launchMissile(s, type, tgt) {
   const def = MISSILES[type]; if (!def || !(s.mis[type] > 0)) return false;
   s.mis[type]--; if (s.isPlayer) C.stats.missiles++;
-  const g = new THREE.Group();
-  const big = type === "torp" || type === "shear";
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(big ? 0.7 : 0.3, big ? 0.7 : 0.3, big ? 6 : 3, 8), new THREE.MeshStandardMaterial({ color: type === "shear" ? 0xd0d0e0 : 0xb0b0b0, metalness: 0.8, roughness: 0.3 }));
-  body.rotation.x = Math.PI / 2; g.add(body);
-  const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: type === "shear" ? 0x80ffff : 0xffa050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-  fl.scale.setScalar(big ? 12 : 6); fl.position.z = big ? 3.5 : 1.8; g.add(fl);
-  const f = s.forward(tv());
-  g.position.copy(s.pos).addScaledVector(s.up(_a), -2.5).addScaledVector(f, 3); g.quaternion.copy(s.q);
-  C.world.add(g);
-  const m = { mesh: g, pos: g.position, vel: f.clone().multiplyScalar(s.speed + def.speed * K * 0.4), type, def, owner: s, team: s.team, target: tgt, life: def.life, trail: 0, hp: big ? 20 : 4 };
-  if (type === "ff") m.target = null;
-  if (def.seek === "none") m.target = null;
-  C.missiles.push(m);
+  const big = type === "torp" || type === "shear", n = def.cluster || 1, small = n > 1;
+  const f = s.forward(tv()), right = new V3(1, 0, 0).applyQuaternion(s.q), up = s.up(tv());
+  for (let i = 0; i < n; i++) {
+    const g = new THREE.Group();
+    const r = big ? 0.7 : small ? 0.18 : 0.3, len = big ? 6 : small ? 1.8 : 3;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), new THREE.MeshStandardMaterial({ color: type === "shear" ? 0xd0d0e0 : small ? 0xc8a050 : 0xb0b0b0, metalness: 0.8, roughness: 0.3 }));
+    body.rotation.x = Math.PI / 2; g.add(body);
+    const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: type === "shear" ? 0x80ffff : small ? 0xffd070 : 0xffa050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    fl.scale.setScalar(big ? 12 : small ? 4 : 6); fl.position.z = len / 2 + 0.5; g.add(fl);
+    // a pod fans its seekers out in a ring before they curve in
+    const off = small ? (i - (n - 1) / 2) : 0, ring = small ? new V3().addScaledVector(right, Math.cos(i / n * 6.283) * 0.35).addScaledVector(up, Math.sin(i / n * 6.283) * 0.35) : new V3();
+    g.position.copy(s.pos).addScaledVector(up, -2.5).addScaledVector(f, 3).addScaledVector(right, off * 1.2); g.quaternion.copy(s.q);
+    C.world.add(g);
+    const v0 = f.clone().add(ring).normalize().multiplyScalar(s.speed + def.speed * K * 0.4);
+    const m = { mesh: g, pos: g.position, vel: v0, type, def, owner: s, team: s.team, target: tgt, life: def.life * (small ? 0.9 + Math.random() * 0.2 : 1), trail: 0, hp: big ? 20 : small ? 2 : 4 };
+    if (type === "ff") m.target = null;
+    if (def.seek === "none") m.target = null;
+    C.missiles.push(m);
+  }
   if (s.isPlayer) sfx.missile(type); else sfx.missile(type, s.pos);
-  if (m.target && m.target.isPlayer) { C.incoming = 2; }
+  if (tgt && tgt.isPlayer && def.seek !== "none") { C.incoming = 2; }
   return true;
 }
 function updMissiles(dt) {
@@ -1001,39 +1015,56 @@ function playerHitFx(pl, amt, at, src, shieldOnly) {
   if (C.hitDirs.length > 8) C.hitDirs.shift();
   if (!shieldOnly) addCrack(d, amt);
 }
-function addCrack(d, amt) {
-  const cr = C.cracks || (C.cracks = { list: [], cv: null, w: 0, h: 0 });
-  if (cr.list.length >= 14) cr.list.shift();
-  // land roughly where the shot came from (behind: anywhere near the canopy rim)
-  let u, v; if (d.z < 0.2) { u = 0.5 + d.x * 0.42 + (Math.random() - 0.5) * 0.18; v = 0.45 - d.y * 0.36 + (Math.random() - 0.5) * 0.16; }
-  else { const a = Math.random() * Math.PI * 2; u = 0.5 + Math.cos(a) * 0.4; v = 0.42 + Math.sin(a) * 0.3; }
-  cr.list.push({ u: clamp(u, 0.06, 0.94), v: clamp(v, 0.06, 0.7), r: clamp(0.05 + amt / 260, 0.06, 0.16), seed: Math.random() * 1e6 | 0 });
-  cr.w = 0;   // force a redraw
-}
-function paintCracks(W, H) {
-  const cr = C.cracks; if (!cr || !cr.list.length) return null;
-  if (cr.cv && cr.w === W && cr.h === H) return cr.cv;
-  const cv = cr.cv || (cr.cv = document.createElement("canvas")); cv.width = W; cv.height = H; cr.w = W; cr.h = H;
-  const x = cv.getContext("2d"); x.clearRect(0, 0, W, H); x.lineCap = "round"; x.lineJoin = "round";
-  for (const c of cr.list) {
-    let s = c.seed; const R = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-    const cx = c.u * W, cy = c.v * H, r = c.r * Math.min(W, H) * 1.6;
-    const fog = x.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45); fog.addColorStop(0, "rgba(210,225,240,.16)"); fog.addColorStop(1, "rgba(210,225,240,0)"); x.fillStyle = fog; x.beginPath(); x.arc(cx, cy, r * 0.45, 0, 7); x.fill();
-    const arms = 7 + (R() * 5 | 0), ends = [];
-    const line = (pts, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.stroke(); };
-    for (let i = 0; i < arms; i++) {
-      let a = (i / arms) * Math.PI * 2 + (R() - 0.5) * 0.5, px = cx, py = cy; const len = r * (0.45 + R() * 0.6), segs = 5 + (R() * 4 | 0), pts = [[px, py]];
-      for (let j = 0; j < segs; j++) { a += (R() - 0.5) * 0.5; const L = len / segs * (0.7 + R() * 0.6); px += Math.cos(a) * L; py += Math.sin(a) * L; pts.push([px, py]);
-        if (R() < 0.3 && j > 0) { let ba = a + (R() < 0.5 ? 1 : -1) * (0.4 + R() * 0.6), bx = px, by = py; const bp = [[bx, by]]; for (let q = 0; q < 3; q++) { ba += (R() - 0.5) * 0.4; bx += Math.cos(ba) * L * 0.6; by += Math.sin(ba) * L * 0.6; bp.push([bx, by]); } line(bp.map(([p, q]) => [p + 1, q + 1]), 1.2, "rgba(0,0,0,.3)"); line(bp, 0.9, "rgba(225,235,250,.45)"); } }
-      ends.push(pts); line(pts.map(([p, q]) => [p + 1, q + 1]), 2.2, "rgba(0,0,0,.35)"); line(pts, 1.5, "rgba(235,242,255,.6)");
-    }
-    // concentric spider-web rings between neighbouring arms
-    for (const f of [0.22, 0.45, 0.7]) { if (R() < 0.25) continue; for (let i = 0; i < ends.length; i++) { if (R() < 0.35) continue; const A = ends[i], B = ends[(i + 1) % ends.length]; const ia = Math.min(A.length - 1, Math.round(A.length * f)), ib = Math.min(B.length - 1, Math.round(B.length * f)); const m = [(A[ia][0] + B[ib][0]) / 2 + (R() - 0.5) * 6, (A[ia][1] + B[ib][1]) / 2 + (R() - 0.5) * 6]; line([A[ia], m, B[ib]], 1.0, "rgba(225,235,250,.4)"); } }
-    // impact chip
-    x.fillStyle = "rgba(255,255,255,.55)"; x.beginPath(); x.arc(cx, cy, Math.max(2, r * 0.04), 0, 7); x.fill();
-    x.fillStyle = "rgba(20,24,30,.5)"; x.beginPath(); x.arc(cx, cy, Math.max(1, r * 0.018), 0, 7); x.fill();
+// canopy cracks live on the real 3D canopy glass, so the dash and canopy frame hide them
+function crackLayer() {
+  const glass = C.cockpit && C.cockpit.userData.glass; if (!glass) return null;
+  let L = glass.userData.crack;
+  if (!L) {
+    const cv = document.createElement("canvas"); cv.width = 2048; cv.height = 1126;   // ~equal pixels per radian across and up the dome
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const m = new THREE.Mesh(glass.geometry, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.BackSide }));
+    m.position.copy(glass.position); m.rotation.copy(glass.rotation); m.scale.copy(glass.scale).multiplyScalar(0.996); m.renderOrder = 2; m.raycast = () => {};
+    glass.parent.add(m); L = glass.userData.crack = { cv, ctx: cv.getContext("2d"), tex, m, n: 0 };
   }
-  return cv;
+  return L;
+}
+function clearCracks() { const gl = C.cockpit && C.cockpit.userData.glass, L = gl && gl.userData.crack; if (L) { L.ctx.clearRect(0, 0, L.cv.width, L.cv.height); L.tex.needsUpdate = true; L.n = 0; } }
+const _ray = new THREE.Raycaster();
+function addCrack(d, amt) {
+  const L = crackLayer(); if (!L || L.n >= 14) return; const pl = C.player, glass = C.cockpit.userData.glass;
+  // aim along the shot's direction; shots from behind or below crack somewhere on the forward glass instead
+  let dir = d.clone(); if (dir.z > -0.15 || dir.y < -0.25) dir.set((Math.random() - 0.5) * 1.4, Math.random() * 0.55, -1);
+  glass.updateMatrixWorld(true); C.camera.updateMatrixWorld();
+  for (let tries = 0; tries < 6; tries++) {
+    const hit = glassUV(glass, C.camera.getWorldPosition(new V3()), dir.clone().normalize().applyQuaternion(C.camera.getWorldQuaternion(new THREE.Quaternion())));
+    if (hit) { L.n++; drawCrack(L.ctx, hit.x * L.cv.width, (1 - hit.y) * L.cv.height, clamp(0.05 + amt / 260, 0.06, 0.16) * 330 * 1.9, Math.random() * 1e6 | 0); L.tex.needsUpdate = true; return; }
+    dir.set((Math.random() - 0.5) * 1.4, Math.random() * 0.55, -1);
+  }
+}
+// where a ray from the eye meets the canopy dome, as a texture coordinate (the dome is a SphereGeometry cap)
+function glassUV(glass, origin, dir) {
+  const inv = new THREE.Matrix4().copy(glass.matrixWorld).invert(), o = origin.clone().applyMatrix4(inv), d = dir.clone().transformDirection(inv);
+  const P = glass.geometry.parameters, r = P.radius, b = o.dot(d), c = o.lengthSq() - r * r, disc = b * b - c; if (disc < 0) return null;
+  const t = -b + Math.sqrt(disc); if (t <= 0) return null;
+  const p = o.addScaledVector(d, t), th = Math.acos(clamp(p.y / r, -1, 1)), v = (th - P.thetaStart) / P.thetaLength; if (v < 0 || v > 1) return null;
+  let ph = Math.atan2(p.z, -p.x); if (ph < 0) ph += Math.PI * 2; const u = (ph - P.phiStart) / P.phiLength;
+  return { x: u, y: 1 - v };
+}
+function drawCrack(x, cx, cy, r, seed) {
+  let s = seed; const R = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  x.lineCap = "round"; x.lineJoin = "round";
+  const fog = x.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45); fog.addColorStop(0, "rgba(210,225,240,.2)"); fog.addColorStop(1, "rgba(210,225,240,0)"); x.fillStyle = fog; x.beginPath(); x.arc(cx, cy, r * 0.45, 0, 7); x.fill();
+  const arms = 7 + (R() * 5 | 0), ends = [];
+  const line = (pts, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.stroke(); };
+  for (let i = 0; i < arms; i++) {
+    let a = (i / arms) * Math.PI * 2 + (R() - 0.5) * 0.5, px = cx, py = cy; const len = r * (0.45 + R() * 0.6), segs = 5 + (R() * 4 | 0), pts = [[px, py]];
+    for (let j = 0; j < segs; j++) { a += (R() - 0.5) * 0.5; const L = len / segs * (0.7 + R() * 0.6); px += Math.cos(a) * L; py += Math.sin(a) * L; pts.push([px, py]);
+      if (R() < 0.3 && j > 0) { let ba = a + (R() < 0.5 ? 1 : -1) * (0.4 + R() * 0.6), bx = px, by = py; const bp = [[bx, by]]; for (let q = 0; q < 3; q++) { ba += (R() - 0.5) * 0.4; bx += Math.cos(ba) * L * 0.6; by += Math.sin(ba) * L * 0.6; bp.push([bx, by]); } line(bp.map(([p, q]) => [p + 1.5, q + 1.5]), 2, "rgba(0,0,0,.3)"); line(bp, 1.4, "rgba(225,235,250,.55)"); } }
+    ends.push(pts); line(pts.map(([p, q]) => [p + 1.5, q + 1.5]), 3.2, "rgba(0,0,0,.35)"); line(pts, 2.2, "rgba(235,242,255,.7)");
+  }
+  for (const f of [0.22, 0.45, 0.7]) { if (R() < 0.25) continue; for (let i = 0; i < ends.length; i++) { if (R() < 0.35) continue; const A = ends[i], B = ends[(i + 1) % ends.length]; const ia = Math.min(A.length - 1, Math.round(A.length * f)), ib = Math.min(B.length - 1, Math.round(B.length * f)); const m = [(A[ia][0] + B[ib][0]) / 2 + (R() - 0.5) * 8, (A[ia][1] + B[ib][1]) / 2 + (R() - 0.5) * 8]; line([A[ia], m, B[ib]], 1.5, "rgba(225,235,250,.5)"); } }
+  x.fillStyle = "rgba(255,255,255,.65)"; x.beginPath(); x.arc(cx, cy, Math.max(3, r * 0.045), 0, 7); x.fill();
+  x.fillStyle = "rgba(20,24,30,.55)"; x.beginPath(); x.arc(cx, cy, Math.max(1.5, r * 0.02), 0, 7); x.fill();
 }
 export function damage(t, amt, at, src, kind = "gun") {
   if (!t.alive) return;
@@ -1368,7 +1399,7 @@ function playerUpdate(dt, ctl) {
   if (ctl.tgtNext || ctl.tgtPrev) cycleTarget(ctl.tgtPrev ? -1 : 1);
   if (C.target && (!C.target.alive)) C.target = null;
   // cloak
-  if (ctl.cloak && s.def.cloak) { s.cloaked = !s.cloaked && s.fuel > 5; C.msgs.push({ t: 2, text: s.cloaked ? "CLOAK ENGAGED" : "CLOAK DISENGAGED" }); sfx.whoosh(0.8, s.cloaked); for (const e of C.ents) if (e.ai && e.ai.tgt === s && s.cloaked) e.ai.tgt = null; }
+  if (ctl.cloak && s.def.cloak) { const was = s.cloaked; s.cloaked = !s.cloaked && s.fuel > 5; if (was && !s.cloaked) { s.ambushT = C.t + 2; s._ambMsg = 0; } C.msgs.push({ t: 2, text: s.cloaked ? "CLOAK ENGAGED" : "CLOAK DISENGAGED" }); sfx.whoosh(0.8, s.cloaked); for (const e of C.ents) if (e.ai && e.ai.tgt === s && s.cloaked) e.ai.tgt = null; }
   if (s.cloaked && s.fuel <= 0) { s.cloaked = false; C.msgs.push({ t: 2, text: "CLOAK FAILED — FUEL EXHAUSTED" }); }
   // comms
   if (ctl.comms) { C.commsOpen = !C.commsOpen; sfx.cue(C.commsOpen ? "u_open" : "u_close", 0.4, {}, 1200, 0.04); }
@@ -1612,7 +1643,15 @@ function paintCockpit(dt) {
   else drawVDUs(L.ctx, R.ctx, { x: 0, y: 0, w: L.canvas.width, h: L.canvas.height }, { x: 0, y: 0, w: R.canvas.width, h: R.canvas.height });
   L.tex.needsUpdate = R.tex.needsUpdate = true;
   const rc = D.radar.ctx; rc.fillStyle = "#020c06"; rc.fillRect(0, 0, 512, 512);
-  if (pw >= 0.5) drawRadar(rc, { x: 256, y: 256, r: 236 }); D.radar.tex.needsUpdate = true;
+  if (pw >= 0.5) drawRadar(rc, { x: 256, y: 256, r: 236 });
+  // the cockpit dies by degrees: flicker, static, a cracked radar face, then sparks and smoke off the dash
+  const hdmg = C.state === "flight" && pl && !C.dead ? 1 - pl.core / pl.coreMax : 0;
+  if (hdmg > 0.25) {
+    if (Math.random() < (hdmg - 0.25) * 0.35) { rc.fillStyle = "rgba(2,12,6,.92)"; rc.fillRect(0, 0, 512, 512); }
+    for (let i = 0; i < hdmg * 34; i++) { rc.fillStyle = `rgba(125,255,168,${Math.random() * 0.22})`; rc.fillRect(0, Math.random() * 512, 512, 1 + Math.random() * 3); }
+    if (hdmg > 0.5) { const cd = C.ckDmg || (C.ckDmg = { seed: Math.random() * 1e6 | 0 }); drawCrack(rc, 300, 210, 260, cd.seed); }
+  }
+  D.radar.tex.needsUpdate = true;
   // auxiliary screens (bombers and heavies)
   for (const k of ["aux1", "aux2", "status"]) { const S = D[k]; if (!S || pw < 1) continue; const c = S.ctx, w = S.canvas.width, h = S.canvas.height; c.fillStyle = "#03100a"; c.fillRect(0, 0, w, h); c.strokeStyle = "rgba(125,255,168,.4)"; c.lineWidth = 3; c.strokeRect(6, 6, w - 12, h - 12); c.font = `bold ${Math.max(18, h * 0.11) | 0}px 'Share Tech Mono', monospace`; c.textBaseline = "top"; c.fillStyle = GREEN;
     if (k === "aux1") { c.fillText("WING", 18, 16); C.wing.forEach((wm, i) => { c.fillStyle = wm.alive ? GREEN : RED; c.fillText(`${(CAST[wm.pilot].callsign || "").toUpperCase()} ${wm.alive ? (wm.disabled ? "NO SIGNAL" : Math.round(wm.healthFrac() * 100) + "%") : C.stats.deadIds.has(wm.pilot) ? "KIA" : "EJECTED"}`, 18, 16 + (i + 1) * h * 0.16); }); }
@@ -1622,6 +1661,14 @@ function paintCockpit(dt) {
   const def = MISSILES[pl.misSel];
   CK.paintLights(ck, { eject: pl.core < pl.coreMax * 0.35, auto: autoAvailable() && !C.mission.navs[C.navIdx].home, lock: !!(def && def.lock > 0 && pl.lock.tgt === C.target && pl.lock.t >= def.lock), missile: C.incoming > 0, ab: pl.abOn, shield: pl.sh[0] < pl.shMax[0] * 0.25 || pl.sh[1] < pl.shMax[1] * 0.25, cloak: pl.cloaked }, C.t);
   CK.paintReadouts(ck, { set: pl.setSpeed / K, kps: pl.speed / K, gun: pl.energy / pl.energyMax, fuel: pl.fuel / pl.fuelMax });
+  if (hdmg > 0.45 && D.lights && Math.random() < 0.18) { const lc = D.lights.ctx; lc.fillStyle = "rgba(0,0,0,.75)"; lc.fillRect(0, 0, D.lights.canvas.width, D.lights.canvas.height); D.lights.tex.needsUpdate = true; }
+  if (hdmg > 0.45 && C.view === "cockpit") {
+    const eye = C.camera.getWorldPosition(new V3());
+    if (Math.random() < dt * hdmg * 3.5) { const o = new V3((Math.random() - 0.5) * 1.1, -0.5 - Math.random() * 0.12, -0.75 - Math.random() * 0.2).applyQuaternion(pl.q).add(eye);
+      for (let i = 0; i < 7; i++) spawnPart(o, pl.vel.clone().add(new V3((Math.random() - 0.5) * 2.5, Math.random() * 2.5, (Math.random() - 0.5) * 2.5).applyQuaternion(pl.q)), 0.35 + Math.random() * 0.3, 0.035, 0.008, 0xfff2b0, 0xff5a10, 1, true); }
+    if (hdmg > 0.7 && Math.random() < dt * 4) { const o = new V3((Math.random() - 0.5) * 0.9, -0.55, -0.8).applyQuaternion(pl.q).add(eye);
+      spawnPart(o, pl.vel.clone().add(new V3((Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3).applyQuaternion(pl.q)), 1.4, 0.06, 0.45, 0x2a2826, 0x0a0a0a, 0.5, false); }
+  }
 }
 function bootScreen(list, pw) {
   const lines = ["CONCORD NAVY AVIONICS", "BIOS 7.11 ......... OK", "REACTOR ............ " + (pw > 0.3 ? "ONLINE" : "SPOOL"), "SHIELD EMITTERS ... " + (pw > 0.5 ? "OK" : "--"), "WEAPONS BUS ....... " + (pw > 0.65 ? "ARMED" : "--"), "ITTS / RADAR ...... " + (pw > 0.8 ? "OK" : "--"), "NAV COMPUTER ...... " + (pw > 0.9 ? "LOCKED" : "--")];
@@ -1711,7 +1758,6 @@ function drawHUD(flight) {
     // panels
     if (C.commsOpen) drawCommsMenu(x);
     // hit flash
-    { const cv = cockpit ? paintCracks(W, H) : null; if (cv) x.drawImage(cv, 0, 0, W, H); }
     if (C.hitDirs && C.hitDirs.length) {
       const dtH = C.hudDt || 1 / 60, cxH = W / 2, cyH = H / 2, Rr = Math.min(W, H) * 0.19;
       C.hitDirs = C.hitDirs.filter(h => (h.t -= dtH) > 0);

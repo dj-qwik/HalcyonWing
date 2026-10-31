@@ -28,10 +28,10 @@ function unlockedShips(c) {
   return SHIP_ORDER.filter(t => set.has(t));
 }
 const REVEAL = {
-  lancer: [["rabbit", "Here she is. Lancer F-31. Heavier guns, thicker shields, and she still turns inside anything the Vharr fly."], ["rabbit", "She's yours now, rookie. Bring her back in one piece."]],
-  longbow: [["rabbit", "Longbow B-9. She's a pig in a dogfight, so don't try. Two torpedoes under the belly and armour like a carrier's hull."], ["rabbit", "You point her at something big, and it stops being big."]],
-  warden: [["rabbit", "The Warden. Heavy fighter, four guns, the best shields this fleet owns. The Admiral called in favours to get these."], ["rabbit", "Don't make me write him a letter about one."]],
-  wraith: [["rabbit", "Nobody outside this deck knows she exists. Wraith XF-90. Experimental cloak, built from what Ember brought us."], ["rabbit", "She's the only one we have. If you lose her, come back anyway. I mean it."]],
+  lancer: [["rabbit", "Here she is. Lancer F-31. Four guns now: mass drivers on the wings that hit half again as hard as those lasers, and image-recognition missiles that lock from any angle."], ["rabbit", "Twice the firepower of a Kestrel and she still turns inside anything the Vharr fly. Bring her back in one piece."]],
+  longbow: [["rabbit", "Longbow B-9. She's a pig in a dogfight, so don't try. Lance torpedoes under the belly: nine hundred points of damage each, the only thing we fly that kills a capital ship. Armour like a carrier's hull."], ["rabbit", "You point her at something big, and it stops being big."]],
+  warden: [["rabbit", "The Warden. Neutron guns that hit like a freight train, particle cannons with reach, and Swarm Pods: one pull, four seekers. The best shields this fleet owns."], ["rabbit", "Don't make me write him a letter about one."]],
+  wraith: [["rabbit", "Nobody outside this deck knows she exists. Wraith XF-90. Three tachyon cannons, the fastest bolts in the fleet, and a cloak built from what Danny brought home."], ["rabbit", "Drop the cloak right on someone's tail and the first two seconds hit twice as hard. Ambush strike, R&D calls it. If you lose her, come back anyway. I mean it."]],
 };
 function revealCine(t) {
   return [{ scene: "ship_reveal", ship: t, dur: 13, caption: `New spacecraft assigned · ${SHIPS[t].cls}`, lines: REVEAL[t] || [] }];

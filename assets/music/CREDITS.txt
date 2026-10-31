@@ -1,0 +1,30 @@
+HALCYON WING — SOUNDTRACK CREDITS
+
+All tracks were loudness-matched and re-encoded. Loopable sections were joined into longer cues.
+
+CC-BY licensed (attribution required)
+- leohpaz — "Outer Space Music Pack", CC-BY 3.0 / 4.0 (dual-listed)
+  https://opengameart.org/content/outer-space-music-pack
+  m_hub_stillness ("Stillness of Space"), m_brief_liftoff ("Lift Off"), m_brief_colony ("Building a Colony"),
+  m_combat_battle ("Battle in Outer Space"), m_combat_asteroids ("Racing Through Asteroids"), m_tense_emergency ("Emergency!")
+- Matthew Pablo (www.matthewpablo.com), CC-BY 3.0
+  m_title_clouds   "Beyond The Clouds (Orchestral Theme)"  https://opengameart.org/content/beyond-the-clouds-orchestral-theme
+  m_hub_soliloquy  "Soliloquy"                             https://opengameart.org/content/soliloquy
+  m_combat_tropic  "Tropic Strike (Live Orchestra)"        https://opengameart.org/content/tropic-strike-live-orchestra
+  m_sad_brother    "You Were My Brother (Live Orchestra)"  https://opengameart.org/content/you-were-my-brother-live-orchestra
+  m_sad_leap       "Leap Into Eternity (Live Orchestra)"   https://opengameart.org/content/leap-into-eternity-live-orchestra
+  m_tense_descent  "Dark Descent (Extended Cut)"           https://opengameart.org/content/dark-descent-extended-cut
+- Jonathan Shaw / InspectorJ (www.jshaw.co.uk), "RPG Orchestral Essentials", CC-BY 3.0
+  m_brief_war      "The Tread of War" Composed by Jonathan Shaw (www.jshaw.co.uk)
+                   https://opengameart.org/content/the-tread-of-war-rpg-orchestral-essentials-military-music
+  m_win_precipice  "The Precipice of Victory" Composed by Jonathan Shaw (www.jshaw.co.uk)
+                   https://opengameart.org/content/the-precipice-of-victory-rpg-orchestral-essentials-battle-results-music
+  m_win_cantstop   "Can't Stop Winning" Composed by Jonathan Shaw (www.jshaw.co.uk)
+                   https://opengameart.org/content/cant-stop-winning-rpg-orchestral-essentials-battle-victory-music
+
+CC0 (public domain)
+- Emma_MA — "Determined Pursuit (epic orchestra loop)"   m_combat_pursuit  https://opengameart.org/content/determined-pursuit-epic-orchestra-loop
+- cynicmusic — "Battle Theme A"                           m_combat_themea   https://opengameart.org/content/battle-theme-a
+- RandomMind — "Fantasy: Lament for a Warrior's Soul"     m_sad_lament      https://opengameart.org/content/fantasy-lament-for-a-warriors-soul
+
+License texts: https://creativecommons.org/licenses/by/3.0/  https://creativecommons.org/licenses/by/4.0/  https://creativecommons.org/publicdomain/zero/1.0/

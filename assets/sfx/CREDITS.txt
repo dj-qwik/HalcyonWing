@@ -1,0 +1,39 @@
+HALCYON WING — SOUND EFFECT CREDITS
+
+All files in this folder were trimmed, faded, level-normalised, resampled to mono and re-encoded.
+The engine and cockpit loops were also cross-faded to loop seamlessly, and some sounds were re-pitched.
+
+CC-BY licensed (attribution required)
+- Little Robot Sound Factory — "Sci-Fi Sound Effects Library", CC-BY 3.0
+  https://opengameart.org/content/sci-fi-sound-effects-library
+  g_blaster (Laser_09), g_turbo (Laser_07), w_autopilot (WarpDrive_00), w_launch (WarpDrive_02)
+- JC Sounds — "Sci-Fi Pack Vol 1", CC-BY 4.0
+  https://opengameart.org/content/jc-sounds-sci-fi-pack-vol-1
+  g_neutron_a/b, g_scourge, g_plasma, w_cloak, w_decloak, l_cockpit
+- dklon — "Laser Fire", CC-BY 3.0
+  https://opengameart.org/content/laser-fire
+  g_particle (laser5), g_tachyon (laser8)
+- qubodup — "2 High Quality Explosions", "Rumble/explosion", "4 projectile launches", CC-BY 3.0
+  https://opengameart.org/content/2-high-quality-explosions
+  https://opengameart.org/content/rumbleexplosion
+  https://opengameart.org/content/4-projectile-launches
+  x_small_a, x_small_b, x_punch, m_launch, m_torp
+- Lamoot — "Big Explosion", CC-BY 3.0
+  https://opengameart.org/content/big-explosion
+  x_big (DeathFlash)
+
+CC0 (public domain)
+- Kenney (kenney.nl) — "Sci-Fi Sounds" and "Impact Sounds"
+  https://kenney.nl/assets/sci-fi-sounds   https://kenney.nl/assets/impact-sounds
+  g_laser_a/b/c, g_mass_a/b, x_small_c, x_sub, x_sub_big, h_shield_*, h_hull_*, l_eng_low, l_eng_mid, l_ab
+- Nenad Simić — "Muffled Distant Explosion"
+  https://opengameart.org/content/muffled-distant-explosion
+  x_far
+- Black Lodge Games — "50 Free SciFi SoundFX"
+  https://opengameart.org/content/50-free-scifi-soundfx-192khz-64-bit-24576kbps-wav
+  f_flyby_0..3
+- farfadet46 — "Laser fire"
+  https://opengameart.org/content/laser-fire-0
+  g_flak
+
+License texts: https://creativecommons.org/licenses/by/3.0/  https://creativecommons.org/licenses/by/4.0/  https://creativecommons.org/publicdomain/zero/1.0/

@@ -1,0 +1,24 @@
+# Render Blueprint — Halcyon Wing
+# A pure static site: ES modules + assets, three.js loaded from jsDelivr via the importmap in index.html.
+# Deploy: Render dashboard → New → Blueprint → pick this repo. No build step, no server, free static hosting.
+services:
+  - type: web
+    name: halcyon-wing
+    runtime: static
+    buildCommand: echo "Static site, nothing to build"
+    staticPublishPath: .
+    headers:
+      # big binary assets rarely change: let browsers and Render's CDN keep them for a week
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=604800
+      # code and the page itself: always revalidate so a new push shows up on the next load
+      - path: /*.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

@@ -1,0 +1,770 @@
+// HALCYON WING — campaign bible, ships, weapons, missions, cinematics.
+// Structure follows Wing Commander conventions: carrier hub between sorties, briefings,
+// nav-point patrols with autopilot, winning / losing mission branches, scripted deaths,
+// a defector who becomes a traitor, an enemy prince and his ace, a superweapon race,
+// funerals, medals, killboard, and a final strike on the enemy heartland.
+
+export const WORLD = {
+  year: 2711,
+  humans: "Terran Concord",
+  navy: "Concord Navy",
+  enemy: "Vharr Hegemony",
+  carrier: "CNS Halcyon",
+  squadron: "Vigil Squadron",
+  lore: [
+    ["THE TERRAN CONCORD", "Sixty-one inhabited worlds bound by a charter signed in the ashes of the Expansion Riots. For twenty-six years the Concord has been at war, and for twenty-six years it has been losing slowly enough to pretend otherwise."],
+    ["THE VHARR HEGEMONY", "Apex predators from the high-gravity world of Kethra. Tall, plated, crested with bone quills, the Vharr organize into hunting clans sworn to the Hegemon. To a Vharr, war is the Great Hunt: a sacred rite that ends only when the prey yields its throat or its world. They do not take prisoners lightly, and they do not forget a worthy enemy."],
+    ["THE BLOOD-NAME", "A Vharr warrior who kills a worthy foe takes a fragment of that foe's name into their own. The greatest Vharr aces carry names that read like casualty lists. Being given a name by the Vharr is the highest and most dangerous honor a human pilot can earn."],
+    ["THE CALDER FRONT", "The Calder's Reach sector is the last buffer between the Hegemony's spearhead and the Concord's core worlds. The strike carrier CNS Halcyon, thirty-four years in service and twice declared lost, holds it with one understrength fighter wing."],
+  ],
+};
+
+// ---------------------------------------------------------------- CHARACTERS
+// portrait: skin, hair, hairStyle, suit, eyes, feature  (procedurally painted)
+export const CAST = {
+  player: { name: "", callsign: "", rank: "2nd Lt.", faction: "concord", role: "You. Fresh from the Academy at Luna Prime.",
+    portrait: { skin: "#c99b7a", hair: "#3a2a1e", hairStyle: "short", suit: "#4a5a6e", eyes: "#3b5f7a", helmet: true }, voice: { pitch: 1, rate: 1 } },
+  varga: { name: "Elias Varga", callsign: "", rank: "Captain", faction: "concord", role: "Commanding Officer, CNS Halcyon",
+    bio: "Thirty-one years in the Navy. Lost his first ship, the Vigilant, at the Battle of Tessaly when the Vharr first used cloaked raiders. Keeps the ship's bell from the Vigilant outside his ready room and rings it once for every pilot lost.",
+    portrait: { skin: "#a7795c", hair: "#d8d8d8", hairStyle: "buzz", suit: "#20283a", eyes: "#2b2b2b", beard: "#cfcfcf", scar: true }, voice: { pitch: 0.7, rate: 0.92 } },
+  vesper: { name: "Mara Okonkwo", callsign: "Vesper", rank: "Lt. Colonel", faction: "concord", role: "Wing Commander, Vigil Squadron",
+    bio: "Flew in the Vega Withdrawal and brought home eleven of twelve pilots when the twelfth was her brother. Commands by example and by memory: she knows the name of every pilot she has ever lost. Precise, hard to impress, harder to forget.",
+    portrait: { skin: "#5b3a29", hair: "#151010", hairStyle: "tied", suit: "#3a4a5a", eyes: "#2a1a10" }, voice: { pitch: 1.05, rate: 1.0 } },
+  deacon: { name: "Tomas Reyes", callsign: "Deacon", rank: "Major", faction: "concord", role: "Senior Pilot, later Fleet Intelligence liaison",
+    bio: "The oldest active pilot in the Calder sector. Once studied to be a priest; the war changed the plan but not the habit of listening. Every rookie on the Halcyon has been taken under his wing at least once. He has buried more of them than he will say.",
+    portrait: { skin: "#b07a52", hair: "#8a8a8a", hairStyle: "receding", suit: "#5a4a3a", eyes: "#3a2a1a", beard: "#7a7a7a" }, voice: { pitch: 0.82, rate: 0.9 } },
+  spark: { name: "Yuki Tanaka", callsign: "Spark", rank: "Captain", faction: "concord", role: "Flight Leader",
+    bio: "Warm, superstitious, and the best natural pilot on the ship. Her fiancé, Lt. Kenji Mori, went missing over Tessaly two years ago. She folds a paper crane before every launch and leaves it on his empty bunk.",
+    portrait: { skin: "#e1bf9f", hair: "#0d0d12", hairStyle: "bob", suit: "#4a3a5a", eyes: "#1a1a1a" }, voice: { pitch: 1.25, rate: 1.05 } },
+  ricochet: { name: "Danny Kowalski", callsign: "Ricochet", rank: "Lieutenant", faction: "concord", role: "Wingman",
+    bio: "Loud, reckless, brilliant, and convinced he is the best pilot alive. Has the second-highest kill count on the ship and the highest number of reprimands. Grew up on a mining rig in the Calder belt; the Vharr burned it when he was fourteen. Three weeks before you came aboard, his best friend since flight school, Lt. Owen \"Tally\" Marsh, was killed on his wing over the Enyo Belt. You are Tally's replacement.",
+    portrait: { skin: "#d6a888", hair: "#a0522d", hairStyle: "messy", suit: "#4a5a3a", eyes: "#4a7a4a" }, voice: { pitch: 1.1, rate: 1.18 } },
+  frost: { name: "Isolde Lindqvist", callsign: "Frost", rank: "Lieutenant", faction: "concord", role: "Wingman",
+    bio: "Says little and misses nothing. Top gunnery scores in her Academy class. Lost her whole first squadron at Hale's Drift and asked to be posted somewhere she would not have to make friends. Then she was posted to the Halcyon.",
+    portrait: { skin: "#f0d0bc", hair: "#e8e0c8", hairStyle: "long", suit: "#3a4a5a", eyes: "#7aa8c8" }, voice: { pitch: 1.12, rate: 0.95 } },
+  halo: { name: "Amara Diaz", callsign: "Halo", rank: "2nd Lt.", faction: "concord", role: "Rookie, your Academy classmate",
+    bio: "Shipped out on the same transport as you. Writes letters home to six younger siblings and reads the replies aloud in the lounge whether anyone asks or not. Believes everyone can be redeemed, including the Vharr pilot nobody else will sit with.",
+    portrait: { skin: "#9a6a4a", hair: "#2a1a10", hairStyle: "curly", suit: "#4a5a6e", eyes: "#3a2010" }, voice: { pitch: 1.2, rate: 1.08 } },
+  ember: { name: "Rhul Ka'den", callsign: "Ember", rank: "Lieutenant", faction: "vharr", role: "Vharr defector, Concord Navy",
+    bio: "Former Hunt-Leader of Clan Ka'den, which was purged by the Blood-Crown for questioning the burning of civilian worlds. He walked out of the fire and into a Concord brig, and three years later into a Concord cockpit. Most of the crew will not eat at his table. He has never once asked them to.",
+    portrait: { vharr: true, skin: "#6a4a3a", crest: "#c8b8a0", eyes: "#e8a040", suit: "#3a4a5a" }, voice: { pitch: 0.55, rate: 0.88 } },
+  rabbit: { name: "Rosa Delgado", callsign: "Rabbit", rank: "Chief Petty Officer", faction: "concord", role: "Flight Deck Chief",
+    bio: "Keeps forty fighters flying with spit, contraband parts, and threats. Talks to the ships more kindly than to the pilots. Has a betting pool on who comes back with the most holes.",
+    portrait: { skin: "#c0906a", hair: "#4a2a1a", hairStyle: "tied", suit: "#6a5a2a", eyes: "#3a2a1a", grease: true }, voice: { pitch: 1.1, rate: 1.12 } },
+  thorne: { name: "Geoffrey Thorne", callsign: "", rank: "Admiral", faction: "concord", role: "Commander, Calder Fleet",
+    bio: "The architect of the Concord's survival and, some say, of its worst decisions. Believes the war can only end with the Hegemony unable to fight it. Has sent better men than you to die for that belief and slept fine afterwards.",
+    portrait: { skin: "#e0c0a8", hair: "#bdbdbd", hairStyle: "slick", suit: "#1a1e2a", eyes: "#5a6a7a" }, voice: { pitch: 0.85, rate: 0.95 } },
+  voss: { name: "Dr. Anneke Voss", callsign: "", rank: "Civilian", faction: "concord", role: "Planetary Geophysicist",
+    bio: "Designer of the Tectonic Shear Device. Captured by the Vharr at Corinth while studying their worlds' crusts. She knows exactly what her invention does, and has not slept well since she drew it.",
+    portrait: { skin: "#ecccb4", hair: "#9a6a3a", hairStyle: "bun", suit: "#6a6a6a", eyes: "#4a6a4a", glasses: true }, voice: { pitch: 1.0, rate: 0.98 } },
+  kaerr: { name: "Kaerr'Vosh nar Tharun", callsign: "The Blood-Crown", rank: "Heir-Prince", faction: "vharr", role: "Heir to the Hegemon, Lord of the Hunt",
+    bio: "Grandson of the Hegemon and commander of the Hegemony's war fleets. Burned his own clan's elders when they counseled peace. Hunts human aces personally and keeps their flight helmets on the bridge of the Pyre-Mother.",
+    portrait: { vharr: true, skin: "#3a2420", crest: "#9a1a1a", eyes: "#ff5a20", suit: "#2a1210", crown: true }, voice: { pitch: 0.4, rate: 0.82 } },
+  shkara: { name: "Sh'kara the Graven", callsign: "", rank: "Hunt-Mistress", faction: "vharr", role: "Ace, leader of the Ashen Talons",
+    bio: "Her blood-name holds the fragments of forty-three human pilots. She paints a white stripe on her fighter for each, and the fighter is now almost entirely white.",
+    portrait: { vharr: true, skin: "#8a7a6a", crest: "#efeae0", eyes: "#9ae0ff", suit: "#e8e4dc", paint: true }, voice: { pitch: 0.75, rate: 0.9 } },
+  vharrpilot: { name: "Vharr Hunter", callsign: "", rank: "", faction: "vharr", role: "",
+    portrait: { vharr: true, skin: "#5a3a2a", crest: "#a08060", eyes: "#ffb030", suit: "#3a2018" }, voice: { pitch: 0.5, rate: 0.9 } },
+  comms: { name: "Halcyon Flight Control", callsign: "", rank: "", faction: "concord", role: "",
+    portrait: { skin: "#b08a6a", hair: "#2a2a2a", hairStyle: "headset", suit: "#2a3a4a", eyes: "#2a2a2a" }, voice: { pitch: 1.0, rate: 1.1 } },
+};
+
+// ---------------------------------------------------------------- WEAPONS
+export const GUNS = {
+  laser:    { name: "Laser Cannon",   dmg: 7,  energy: 2.2, rof: 0.16, speed: 1300, range: 1700, color: 0xff3a2a, size: 1.0 },
+  mass:     { name: "Mass Driver",    dmg: 10, energy: 3.0, rof: 0.22, speed: 1150, range: 1600, color: 0x40c8ff, size: 1.1 },
+  neutron:  { name: "Neutron Gun",    dmg: 16, energy: 5.5, rof: 0.3,  speed: 1000, range: 1300, color: 0x6aff4a, size: 1.4 },
+  particle: { name: "Particle Cannon",dmg: 12, energy: 3.6, rof: 0.2,  speed: 1450, range: 1900, color: 0xffd040, size: 1.15 },
+  tachyon:  { name: "Tachyon Cannon", dmg: 14, energy: 3.8, rof: 0.18, speed: 1700, range: 2100, color: 0x8af0ff, size: 1.2 },
+  rend:     { name: "Rend Cannon",    dmg: 8,  energy: 2.6, rof: 0.2,  speed: 1200, range: 1600, color: 0xff8a1a, size: 1.1 },
+  scourge:  { name: "Ion Scourge",    dmg: 13, energy: 4.4, rof: 0.27, speed: 1100, range: 1500, color: 0xc060ff, size: 1.35 },
+  flak:     { name: "Flak Battery",   dmg: 6,  energy: 0,   rof: 0.35, speed: 900,  range: 1800, color: 0xffb060, size: 1.6 },
+  capLaser: { name: "Turbolaser",     dmg: 22, energy: 0,   rof: 0.9,  speed: 1100, range: 2600, color: 0xff2020, size: 2.4 },
+  capPlasma:{ name: "Plasma Battery", dmg: 26, energy: 0,   rof: 1.0,  speed: 1000, range: 2600, color: 0xff7010, size: 2.6 },
+};
+
+export const MISSILES = {
+  df:   { name: "Dumbfire",          short: "DF",  dmg: 70,  speed: 900, turn: 0,   lock: 0,   life: 4,  seek: "none" },
+  hs:   { name: "Heat Seeker",       short: "HS",  dmg: 55,  speed: 760, turn: 2.2, lock: 0.6, life: 7,  seek: "heat" },
+  ir:   { name: "Image Recognition", short: "IR",  dmg: 60,  speed: 700, turn: 2.6, lock: 2.0, life: 9,  seek: "image" },
+  ff:   { name: "Friend-or-Foe",     short: "FF",  dmg: 50,  speed: 680, turn: 2.4, lock: 0,   life: 9,  seek: "auto" },
+  torp: { name: "Lance Torpedo",     short: "TORP",dmg: 900, speed: 320, turn: 0.7, lock: 5.0, life: 22, seek: "image", capital: true },
+  shear:{ name: "Tectonic Shear",    short: "SHEAR",dmg: 0,  speed: 260, turn: 0.6, lock: 4.0, life: 30, seek: "image", special: true },
+};
+
+// ---------------------------------------------------------------- SHIPS
+// speeds in kps (display), turn in deg/s, shields/armor in cm-equivalents
+export const SHIPS = {
+  // Concord fighters
+  kestrel: { faction: "concord", cls: "Light Fighter", name: "F-12 Kestrel", desc: "Fast, fragile, and forgiving. Every Concord pilot learns to fly in a Kestrel, and many never get the chance to fly anything else.",
+    speed: 420, ab: 900, accel: 220, pitch: 90, yaw: 90, roll: 150, fuel: 100, shield: [60, 50], armor: [45, 40, 40, 35], core: 60,
+    guns: ["laser", "laser"], missiles: { hs: 2, df: 2 }, decoys: 6, energy: 100, size: 11 },
+  lancer: { faction: "concord", cls: "Medium Fighter", name: "F-31 Lancer", desc: "The workhorse of the Calder front. Twin-boom airframe, four gun hardpoints and a Mark IV ITTS that can track a target through a debris field.",
+    speed: 400, ab: 940, accel: 200, pitch: 78, yaw: 78, roll: 130, fuel: 120, shield: [90, 80], armor: [70, 60, 60, 55], core: 90,
+    guns: ["mass", "mass", "laser", "laser"], missiles: { ir: 2, hs: 4, ff: 2 }, decoys: 10, energy: 140, size: 15 },
+  warden: { faction: "concord", cls: "Heavy Fighter", name: "F-44 Warden", desc: "A flying armory. Slow to turn and slow to die. Neutron guns that can strip a Vharr corvette's flak batteries in a single pass.",
+    speed: 360, ab: 850, accel: 160, pitch: 62, yaw: 62, roll: 100, fuel: 130, shield: [130, 120], armor: [110, 90, 90, 85], core: 130,
+    guns: ["neutron", "neutron", "particle", "particle"], missiles: { ir: 4, hs: 4, ff: 4, df: 4 }, decoys: 12, energy: 170, size: 19 },
+  longbow: { faction: "concord", cls: "Torpedo Bomber", name: "B-9 Longbow", desc: "Heavy bomber carrying Lance torpedoes, the only weapon a fighter wing has that can open a capital ship. A rear turret keeps pursuers honest.",
+    speed: 320, ab: 760, accel: 130, pitch: 50, yaw: 50, roll: 80, fuel: 120, shield: [160, 160], armor: [140, 120, 110, 110], core: 160,
+    guns: ["mass", "mass", "laser"], missiles: { torp: 4, ir: 4, ff: 2 }, decoys: 14, energy: 150, size: 24, turret: true },
+  wraith: { faction: "concord", cls: "Stealth Strike Fighter", name: "XF-90 Wraith", desc: "Prototype. Phase-cloak, tachyon cannons, and a single centerline bay sized for one Tectonic Shear Device. Only three were built.",
+    speed: 460, ab: 1000, accel: 240, pitch: 88, yaw: 88, roll: 150, fuel: 160, shield: [140, 120], armor: [90, 80, 80, 70], core: 110,
+    guns: ["tachyon", "tachyon", "tachyon", "particle"], missiles: { ir: 4, ff: 4, hs: 2 }, decoys: 14, energy: 180, size: 16, cloak: true },
+  // Vharr fighters
+  skrel: { faction: "vharr", cls: "Light Fighter", name: "Skrel", desc: "A cockpit pod between two forward claws. Fast, cheap, and flown by young hunters eager for their first blood-name.",
+    speed: 440, ab: 860, accel: 230, pitch: 95, yaw: 95, roll: 160, shield: [30, 25], armor: [25, 25, 25, 20], core: 35,
+    guns: ["rend", "rend"], missiles: { df: 1 }, decoys: 1, energy: 80, size: 10, hp: 1 },
+  dhakar: { faction: "vharr", cls: "Medium Fighter", name: "Dhakar", desc: "The crescent. A wide, curved wing around a central pod; the silhouette Concord pilots see in their sleep.",
+    speed: 400, ab: 880, accel: 200, pitch: 75, yaw: 75, roll: 120, shield: [55, 45], armor: [45, 40, 40, 35], core: 55,
+    guns: ["rend", "rend", "rend"], missiles: { hs: 2, df: 1 }, decoys: 2, energy: 110, size: 15 },
+  krosk: { faction: "vharr", cls: "Heavy Fighter", name: "Krosk", desc: "Hammer-headed brawler with talons full of Ion Scourges. Hard to kill, harder to shake.",
+    speed: 340, ab: 800, accel: 150, pitch: 58, yaw: 58, roll: 90, shield: [90, 80], armor: [80, 70, 70, 60], core: 90,
+    guns: ["scourge", "scourge", "rend", "rend"], missiles: { ir: 2, hs: 2 }, decoys: 3, energy: 150, size: 19 },
+  vhaal: { faction: "vharr", cls: "Interceptor", name: "Vhaal", desc: "Needle-nosed interceptor with forward-swept blades. Given only to pilots who have already earned a blood-name.",
+    speed: 480, ab: 980, accel: 250, pitch: 100, yaw: 100, roll: 170, shield: [60, 50], armor: [45, 40, 40, 35], core: 55,
+    guns: ["scourge", "rend", "rend"], missiles: { ir: 2, ff: 2 }, decoys: 3, energy: 130, size: 13 },
+  gorrak: { faction: "vharr", cls: "Bomber", name: "Gorrak", desc: "Bulbous torpedo bomber with a dorsal turret. Their target is always the carrier.",
+    speed: 300, ab: 700, accel: 120, pitch: 45, yaw: 45, roll: 70, shield: [100, 100], armor: [90, 80, 80, 80], core: 110,
+    guns: ["rend", "rend"], missiles: { torp: 2 }, decoys: 2, energy: 100, size: 22, bomber: true },
+  bloodcrown: { faction: "vharr", cls: "Royal Interceptor", name: "Blood-Crown", desc: "The Heir-Prince's personal Vhaal, re-forged with a dreadnought's shield emitter and lacquered in the blood-red of Clan Tharun.",
+    speed: 500, ab: 1020, accel: 260, pitch: 105, yaw: 105, roll: 175, shield: [180, 160], armor: [120, 110, 110, 100], core: 140,
+    guns: ["scourge", "scourge", "rend", "rend"], missiles: { ir: 4, ff: 4 }, decoys: 8, energy: 200, size: 15 },
+  // Capital ships and others
+  halcyon: { faction: "concord", cls: "Strike Carrier", name: "CNS Halcyon", capital: true, desc: "Ardent-class strike carrier, 860 meters. Thirty-four years in service, two refits, one hull breach that was officially never repaired. Home.",
+    speed: 40, hull: 9000, size: 860, turrets: 10, gun: "capLaser" },
+  resolute: { faction: "concord", cls: "Destroyer", name: "CNS Resolute", capital: true, desc: "Gladius-class destroyer. Escort and line-breaker.", speed: 60, hull: 4200, size: 420, turrets: 6, gun: "capLaser" },
+  transport: { faction: "concord", cls: "Transport", name: "Hauler", capital: true, desc: "Civilian bulk transport pressed into service for the colonial evacuation.", speed: 90, hull: 900, size: 160, turrets: 0 },
+  shuttle: { faction: "concord", cls: "Shuttle", name: "Rescue Shuttle", capital: true, small: true, desc: "Marine assault shuttle.", speed: 150, hull: 380, size: 42, turrets: 0 },
+  lodestar: { faction: "concord", cls: "Weapons Platform", name: "CNS Lodestar", capital: true, desc: "A mobile siege platform built around a single planet-cracking mass accelerator. The Concord's last best hope, until it wasn't.", speed: 30, hull: 14000, size: 1100, turrets: 12, gun: "capLaser" },
+  station: { faction: "concord", cls: "Starbase", name: "Vigil Station", capital: true, desc: "Forward repair yard.", speed: 0, hull: 20000, size: 700, turrets: 8, gun: "capLaser" },
+  shroud: { faction: "vharr", cls: "Unknown cloaked capital ship", name: "Unknown Vessel", capital: true, desc: "Larger than a Hunt-Mother. Cloaked. Armed with something that kills a fighter's systems in one pulse.", speed: 12, hull: 99999, size: 1000, turrets: 0, gun: "capPlasma", shearOnly: true },
+  ralthak: { faction: "vharr", cls: "Corvette", name: "Ral'thak", capital: true, corvette: true, desc: "Vharr picket corvette. Light enough for concentrated gunfire to break.", speed: 80, hull: 1400, size: 210, turrets: 4, gun: "capPlasma" },
+  kaven: { faction: "vharr", cls: "Destroyer", name: "Ka'ven", capital: true, desc: "Vharr line destroyer. Torpedoes required, unless you knock out its shield generator.", speed: 60, hull: 3000, size: 460, turrets: 6, gun: "capPlasma", shieldGen: true },
+  gharzen: { faction: "vharr", cls: "Hunt-Mother Carrier", name: "Ghar'zen", capital: true, desc: "A Hunt-Mother: carrier, flagship, and mobile shrine. Launches hunters until it dies.", speed: 45, hull: 7000, size: 900, turrets: 10, gun: "capPlasma", shieldGen: true, launcher: true },
+  pyre: { faction: "vharr", cls: "Dreadnought", name: "Kar'thask, the Pyre-Mother", capital: true, desc: "Two kilometers of bone-white armor wrapped around a world-burning plasma lance. The ship that burned Corinth.", speed: 30, hull: 9000, size: 1900, turrets: 16, gun: "capPlasma", shieldGen: true, launcher: true },
+  vtransport: { faction: "vharr", cls: "Supply Ship", name: "Thrask Hauler", capital: true, corvette: true, desc: "Vharr supply hauler.", speed: 80, hull: 900, size: 180, turrets: 1, gun: "capPlasma" },
+  prison: { faction: "vharr", cls: "Prison Station", name: "Ghul Ankoth", capital: true, desc: "A Vharr prison station in orbit of a dead moon.", speed: 0, hull: 9000, size: 600, turrets: 6, gun: "capPlasma" },
+  lifepod: { faction: "concord", cls: "Escape Pod", name: "Lifepod", capital: true, small: true, desc: "Civilian lifepod.", speed: 0, hull: 120, size: 8, turrets: 0 },
+  node: { faction: "vharr", cls: "Tectonic Node", name: "Mantle Node", capital: true, shearOnly: true, desc: "The point where the Shear must strike.", speed: 0, hull: 1, size: 260, turrets: 0 },
+};
+
+// ---------------------------------------------------------------- MEDALS & RANKS
+// promotion ladder. Points come only from objectives: a primary is worth 100, each secondary 75.
+// Twelve campaign missions x (100 + 2x75) plus Ghost Signal (100 + 75) = 3175: Colonel is reachable
+// only by a flawless campaign, while a pilot who only ever completes primaries tops out around Captain.
+export const RANKS = ["Private", "Private First Class", "Corporal", "Sergeant", "Staff Sergeant", "Master Sergeant", "Warrant Officer", "2nd Lieutenant", "1st Lieutenant", "Captain", "Major", "Lieutenant Colonel", "Colonel"];
+export const RANK_SHORT = ["Pvt.", "PFC", "Cpl.", "Sgt.", "SSgt.", "MSgt.", "WO", "2nd Lt.", "1st Lt.", "Capt.", "Maj.", "Lt. Col.", "Col."];
+export const RANK_ADDR = ["Private", "Private", "Corporal", "Sergeant", "Sergeant", "Sergeant", "Mister", "Lieutenant", "Lieutenant", "Captain", "Major", "Colonel", "Colonel"];
+export const RANK_PTS = [0, 100, 200, 300, 450, 600, 750, 900, 1100, 1300, 1800, 2450, 3175];
+export const PTS = { primary: 100, secondary: 75, branchPrimary: 50, branchSecondary: 25 };
+export const MEDALS = {
+  bronze: { name: "Bronze Star", color: "#c08040", why: "Valor under fire." },
+  silver: { name: "Silver Star", color: "#c8ccd4", why: "Conspicuous gallantry against a capital ship." },
+  gold: { name: "Gold Star", color: "#e8c040", why: "Extraordinary heroism; a mission that turned a campaign." },
+  wound: { name: "Purple Comet", color: "#9a4ac8", why: "Wounded in action." },
+  ace: { name: "Ace of Aces Ribbon", color: "#40a0e0", why: "Twenty-five confirmed kills." },
+  calder: { name: "Calder Campaign Ribbon", color: "#4a8a4a", why: "Service on the Calder front." },
+  pegasus: { name: "Concord Star", color: "#ffffff", why: "The Concord's highest honor." },
+  airmedal: { name: "Air Medal", color: "#3a7ac8", why: "Every objective of a sortie completed, primary and secondary." },
+  dfc: { name: "Distinguished Flying Cross", color: "#c83a3a", why: "A flawless record across five sorties." },
+  marksman: { name: "Marksman's Badge", color: "#d0b060", why: "Half of all rounds fired on a sortie found their target." },
+  ironhull: { name: "Iron Hull Citation", color: "#7a8088", why: "Five kills in one sortie without a scratch on the hull." },
+  doubleace: { name: "Double Ace Ribbon", color: "#2aa0a0", why: "Fifty confirmed kills." },
+  goldwings: { name: "Golden Wings", color: "#f0d060", why: "Every primary and secondary objective of the Calder campaign. There is no higher mark of a pilot." },
+};
+
+// ---------------------------------------------------------------- MISSIONS
+// nav.obj: "clear" | "protect" | "destroy" | "duel" | "reach" | "none"
+// groups: { type, n, ace?, id?, name?, target?: "player"|"escort"|"carrier"|id, pos?: [x,y,z] }
+// mission.escort: friendly ships that travel with you between nav points
+// events: { at: "arrive"|"clear"|"t:<seconds>"|"dead:<id>"|"hull:<id><frac>", say: [[who, text]], spawn: [groups], fn }
+export const MISSIONS = {
+  m1: {
+    title: "First Light", system: "Calder's Reach — Enyo Belt", date: "14 March 2711", act: 1,
+    ship: "kestrel", wing: ["spark"], pre: "cs_arrival",
+    brief: [
+      ["vesper", "Sit down. All of you. {rank}, welcome to the Halcyon. Your first patrol starts in forty minutes, so this is the only welcome you get."],
+      ["vesper", "Routine sweep of the Enyo Belt. Three nav points. Long-range picked up Vharr scouts poking around the asteroids yesterday. If they're still there, kill them."],
+      ["vesper", "Captain Tanaka is your flight leader. Stay on her wing and do exactly what she says."],
+      ["spark", "Don't worry, rookie. Enyo is quiet this time of year. Mostly."],
+      ["vesper", "Return to the Halcyon after Nav 3. Dismissed."],
+    ],
+    objectives: ["Patrol Nav 1, Nav 2, Nav 3", "Destroy all Vharr scouts", "Return to the Halcyon"],
+    secondary: [{ k: "kills", n: 4, text: "Shoot down at least four of the five raiders yourself" }, { k: "accuracy", pct: 35, text: "Gunnery: land 35% of your shots" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "calder", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -120, -900] }] },
+      { name: "Nav 1", env: { asteroids: 1, planet: "calder" }, obj: "clear", groups: [{ type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["spark", "Contacts, two Skrel. Break and attack, rookie. Show me what the Academy taught you."]] },
+                 { at: "clear", say: [["spark", "Scratch two. Not bad for a first day."]] }] },
+      { name: "Nav 2", env: { asteroids: 0, nebula: 1 }, obj: "none", groups: [],
+        events: [{ at: "arrive", say: [["spark", "Nav 2 clear. You know, I fold a paper crane before every launch. Today's is for you. Don't make me waste it."]] }] },
+      { name: "Nav 3", env: { asteroids: 1 }, obj: "clear", groups: [{ type: "skrel", n: 2 }, { type: "dhakar", n: 1 }],
+        events: [{ at: "arrive", say: [["spark", "Three bandits. That crescent is a Dhakar, watch its forward guns."]] },
+                 { at: "arrive", say: [["vharrpilot", "Little prey, far from your den. Your name will be short."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -120, -900] }] },
+    ],
+    win: "m2", lose: "m2", post: { win: "cs_m1_win", lose: "cs_m1_lose" },
+  },
+  m2: {
+    title: "Shepherd", system: "Calder's Reach — Thessaly Lane", date: "17 March 2711", act: 1,
+    ship: "kestrel", wing: ["ricochet"],
+    brief: [
+      ["vesper", "Two civilian transports, the Tamsin and the Oriel, are moving refugees from the outer colonies to Vigil Station. You'll escort them to the jump point at Nav 3."],
+      ["vesper", "Intelligence says the Vharr have been hitting soft targets along this lane. These ships carry four thousand people. Losing one is a failure."],
+      ["ricochet", "Babysitting. Great. Hey rookie, try to keep up, alright? I'm going for a personal best."],
+      ["vesper", "Lieutenant Kowalski, your personal best will be keeping your mouth shut. Escorts first, kills second."],
+    ],
+    objectives: ["Escort transports Tamsin and Oriel", "At least one transport must survive", "Return to the Halcyon"],
+    secondary: [{ k: "protectAll", text: "Both the Tamsin and the Oriel reach the jump point" }, { k: "wingAlive", text: "Bring Ricochet home" }],
+    escort: [{ type: "transport", id: "tamsin", name: "Tamsin" }, { type: "transport", id: "oriel", name: "Oriel" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "thessaly", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [400, -150, -1000] }] },
+      { name: "Nav 1", env: { nebula: 1 }, obj: "protect", groups: [{ type: "skrel", n: 3, target: "escort" }],
+        events: [{ at: "arrive", say: [["comms", "Tamsin to escort, we have bandits on scope! Please, we have children aboard!"]] }] },
+      { name: "Nav 2", env: { asteroids: 1 }, obj: "protect", groups: [{ type: "dhakar", n: 2, target: "escort" }, { type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["ricochet", "Two Dhakars making a run on the Oriel! I've got the left one, you take the right!"]] },
+                 { at: "t:35", spawn: [{ type: "skrel", n: 2, target: "escort" }], say: [["ricochet", "More of 'em! Where are they coming from?"]] }] },
+      { name: "Nav 3 — Jump Point", env: { jump: 1 }, obj: "none", groups: [],
+        events: [{ at: "arrive", say: [["comms", "Jump point reached. Tamsin and Oriel, you are clear to jump. God bless, Halcyon."]], fn: "escortJump" }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [400, -150, -1000] }] },
+    ],
+    protect: ["tamsin", "oriel"], protectMin: 1,
+    win: "m3", lose: "l1", post: { win: "cs_m2_win", lose: "cs_m2_lose" },
+  },
+  m3: {
+    title: "The Ashen Talons", system: "Calder's Reach — Hale's Drift", date: "22 March 2711", act: 1,
+    ship: "lancer", wing: ["frost"],
+    brief: [
+      ["vesper", "Good news, {rank}: Chief Delgado has cleared you for the Lancer. Bad news: you'll need it."],
+      ["vesper", "A Vharr corvette, the Ral'thak, has been running pickets for Hunt-Mother operations in Hale's Drift. Corvettes are light enough that concentrated gunfire will break them. Kill its escorts, then kill it."],
+      ["vesper", "Be warned. Signals intercepts mention the Ashen Talons. That's Sh'kara the Graven's squadron. Forty-three confirmed kills. If you see a white Vhaal, do not engage alone."],
+      ["frost", "Understood."],
+      ["vesper", "That's the most Lieutenant Lindqvist has said all week. Take it as a sign. Launch."],
+    ],
+    objectives: ["Destroy the corvette Ral'thak", "Destroy its fighter escort", "Return to the Halcyon"],
+    secondary: [{ k: "kills", n: 6, text: "Score six kills" }, { k: "hull", min: 0.5, text: "Survive the Graven with your hull above 50%" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "hale", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1", env: { asteroids: 1 }, obj: "clear", groups: [{ type: "dhakar", n: 2 }, { type: "skrel", n: 1 }],
+        events: [{ at: "arrive", say: [["frost", "Bandits. Engaging."]] }] },
+      { name: "Nav 2 — Ral'thak", env: { nebula: 1, planet: "hale" }, obj: "destroy", target: "ralthak",
+        groups: [{ type: "ralthak", n: 1, id: "ralthak", pos: [0, 0, -2600] }, { type: "dhakar", n: 2 }, { type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["frost", "Corvette at twelve o'clock. Flak's heavy on the dorsal side. Come in low."]] },
+                 { at: "dead:ralthak", say: [["frost", "Corvette's breaking up. Good shooting."]] },
+                 { at: "dead:ralthak", spawn: [{ type: "vhaal", n: 1, ace: "shkara", id: "shkara", target: "player" }],
+                   say: [["shkara", "You killed my sisters' nest, little one. I will remember the shape of your ship."], ["frost", "White Vhaal. That's her. Don't let her get on your six!"]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m4", lose: "l1", post: { win: "cs_m3_win", lose: "cs_m3_lose" },
+  },
+  m4: {
+    title: "Ashes of Corinth", system: "New Corinth", date: "02 April 2711", act: 1,
+    ship: "lancer", wing: ["ember"], pre: "cs_corinth",
+    brief: [
+      ["varga", "Forty-eight hours ago the colony at New Corinth stopped transmitting. Three hundred and ten thousand people. A courier passed through this morning and reported fires visible from orbit."],
+      ["varga", "You and Lieutenant Ka'den will fly reconnaissance. Find out what happened. If there are survivors, find them."],
+      ["ember", "I know what happened, Captain. I have seen this before. The Pyre-Mother hunts in this way."],
+      ["varga", "Then you'll know what to look for. Lieutenant, you're flight lead. Ka'den flies on your wing. That's an order, not a request, before anyone asks."],
+    ],
+    choice: { q: "Before launch, Ember speaks to you on the flight deck: \"You do not have to fly with me. The others refused.\"",
+      options: [{ text: "\"You're my wingman. That's all that matters.\"", morale: { ember: 2 }, flag: "trustEmber" },
+                { text: "\"Just stay on my wing and we'll see.\"", morale: { ember: 0 } }] },
+    objectives: ["Reconnoiter New Corinth", "Protect the lifepods and the rescue shuttle", "Return to the Halcyon"],
+    secondary: [{ k: "killType", type: "gorrak", n: 1, text: "Shoot down the Gorrak bomber" }, { k: "wingAlive", text: "Ember returns with you" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "corinthBurn", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Corinth Orbit", env: { planet: "corinthBurn", debris: 1 }, obj: "clear", groups: [{ type: "dhakar", n: 2 }, { type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["ember", "Look at the planet. That glow is not the sunrise. They burned the cities from orbit, one by one."], ["ember", "Hunters. Still feeding on the wreckage. Let us end them."]] }] },
+      { name: "Nav 2 — Lifepods", env: { planet: "corinthBurn", debris: 1 }, obj: "protect",
+        friends: [{ type: "lifepod", id: "pod1", pos: [80, 20, -800] }, { type: "lifepod", id: "pod2", pos: [-60, -30, -850] }, { type: "lifepod", id: "pod3", pos: [20, 60, -900] }, { type: "shuttle", id: "rescue", pos: [0, 0, 200] }],
+        groups: [{ type: "gorrak", n: 1, target: "rescue", pos: [0, 400, -3000] }, { type: "skrel", n: 3, target: "pod1" }],
+        events: [{ at: "arrive", say: [["comms", "Rescue One to escort: we see lifepods! Survivors, three pods! Keep those hunters off us while we pull them in!"], ["ember", "They hunt the pods for sport. Kill them first."]] },
+                 { at: "t:40", spawn: [{ type: "dhakar", n: 2, target: "rescue" }], say: [["ember", "More of them. Stay close to the shuttle."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    protect: ["rescue"], protectMin: 1,
+    win: "m5", lose: "m5", post: { win: "cs_m4_win", lose: "cs_m4_lose" },
+  },
+  m5: {
+    title: "Hunting the Pyre", system: "Corinth Approach", date: "05 April 2711", act: 1,
+    ship: "longbow", wing: ["vesper"],
+    brief: [
+      ["vesper", "We tracked the force that burned Corinth. The dreadnought is gone, jumped out, but it left a destroyer behind to cover its withdrawal. The Ka'ven."],
+      ["vesper", "You'll fly a Longbow. Lance torpedoes. Hold your target in the reticle for five seconds to lock, fire, and break away before the plasma batteries find you."],
+      ["vesper", "If the torpedoes run dry, its shield generator is the bulb on the dorsal spine. Kill that and your guns will bite. Probably."],
+      ["vesper", "I'm flying your wing myself. I want to see how you handle a bomber."],
+    ],
+    objectives: ["Destroy the destroyer Ka'ven", "Return to the Halcyon"],
+    secondary: [{ k: "killType", type: "krosk", n: 2, text: "Destroy both Krosk heavy fighters" }, { k: "hull", min: 0.6, text: "Bring the Longbow home with hull above 60%" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "corinthBurn", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1", env: { asteroids: 1 }, obj: "clear", groups: [{ type: "dhakar", n: 3 }],
+        events: [{ at: "arrive", say: [["vesper", "Escort screen. Use your guns, save the torpedoes for the destroyer."]] }] },
+      { name: "Nav 2 — Ka'ven", env: { nebula: 1 }, obj: "destroy", target: "kaven",
+        groups: [{ type: "kaven", n: 1, id: "kaven", pos: [0, 0, -3200] }, { type: "krosk", n: 2 }, { type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["vesper", "There she is. I'll draw the Krosks. Line up your run and get that lock."]] },
+                 { at: "dead:kaven", say: [["vesper", "Destroyer's gone! {rank}, that was textbook. Form on me and let's go home."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m6", lose: "l2", post: { win: "cs_m5_win", lose: "cs_m5_lose" },
+  },
+  m6: {
+    title: "A Thousand Cranes", system: "Calder's Reach — Tessaly", date: "11 April 2711", act: 2,
+    ship: "lancer", wing: ["spark", "ricochet"], pre: "cs_spark_letter",
+    brief: [
+      ["varga", "A Hunt-Mother carrier, the Ghar'zen, has jumped into Tessaly. It's twelve minutes from launch range of this ship. We are not going to be here when it arrives. We are going to it."],
+      ["varga", "Captain Tanaka will lead the strike. Lieutenant Kowalski and you fly escort. Bomber squadrons follow on your signal. Clear their path, kill the flak, and let the Longbows do their work."],
+      ["spark", "Tessaly. This is where Kenji went down. It's alright, Captain. I'm ready."],
+      ["varga", "Good hunting. All of you come back."],
+    ],
+    objectives: ["Clear the Ghar'zen's fighter screen", "Damage the Hunt-Mother", "Return to the Halcyon"],
+    secondary: [{ k: "kills", n: 6, text: "Score six kills in the strike" }, { k: "accuracy", pct: 40, text: "Gunnery: land 40% of your shots" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "tessaly", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Ghar'zen", env: { planet: "tessaly", nebula: 1 }, obj: "clear",
+        groups: [{ type: "gharzen", n: 1, id: "gharzen", pos: [400, -100, -4200] }, { type: "dhakar", n: 3 }, { type: "krosk", n: 2 }],
+        events: [{ at: "arrive", say: [["spark", "Hunt-Mother dead ahead. It's... beautiful, in an awful way. Weapons free, everyone!"]] },
+                 { at: "t:45", spawn: [{ type: "vhaal", n: 2 }], say: [["ricochet", "Interceptors launching from the carrier! Watch it!"]] },
+                 { at: "clear", say: [["spark", "Screen's down! Longbows, you're clear—"], ["spark", "Wait. My shields are gone, I've lost my engines... I'm still headed straight at the carrier."], ["ricochet", "Spark, eject! EJECT!"], ["spark", "Ejection system's slagged, Danny. It's alright. I always wanted to see what's on the other side of that hull."], ["spark", "Tell Kenji... no. I'll tell him myself."]], fn: "sparkRam" }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m7", lose: "m7", post: { win: "cs_spark_funeral", lose: "cs_spark_funeral" },
+  },
+  m7: {
+    title: "Lodestar", system: "Varenne Gate", date: "29 April 2711", act: 2, pre: "cs_lodestar_brief",
+    ship: "warden", wing: ["ember", "frost"],
+    brief: [
+      ["thorne", "The Lodestar is the Concord's answer to the Pyre-Mother. A platform able to crack a world. Today it moves into firing position over the Vharr staging world of Ashkar Minor."],
+      ["thorne", "You will escort it through the Varenne Gate. The Vharr know nothing of its existence. Keep it that way."],
+      ["deacon", "Begging your pardon, Admiral. Ashkar Minor has a population."],
+      ["thorne", "It has a garrison, Major. Fly your mission, {rank}."],
+    ],
+    objectives: ["Escort the CNS Lodestar to Nav 3", "Lodestar must survive", "Return to the Halcyon"],
+    secondary: [{ k: "killType", type: "gorrak", n: 2, text: "Destroy both Gorrak bombers yourself" }, { k: "killType", type: "ralthak", n: 1, text: "Destroy the corvette Ral'thak" }],
+    escort: [{ type: "lodestar", id: "lodestar", name: "Lodestar" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "varenne", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [600, -200, -1400] }] },
+      { name: "Nav 1", env: { asteroids: 1 }, obj: "protect", groups: [{ type: "krosk", n: 2, target: "escort" }, { type: "dhakar", n: 2 }],
+        events: [{ at: "arrive", say: [["frost", "They're already here. They knew our route."], ["ember", "...This is not chance."]] }] },
+      { name: "Nav 2", env: { nebula: 1 }, obj: "protect", groups: [{ type: "gorrak", n: 2, target: "escort" }, { type: "vhaal", n: 2 }],
+        events: [{ at: "arrive", say: [["frost", "Bombers! Gorraks on the Lodestar!"]] },
+                 { at: "t:30", spawn: [{ type: "ralthak", n: 1, id: "ralthak2", pos: [800, 0, -2600] }], say: [["ember", "Corvette decloaking. They are hunting the platform's weak point."]] }] },
+      { name: "Nav 3 — Firing Position", env: { planet: "ashkar" }, obj: "none", groups: [],
+        events: [{ at: "arrive", say: [["comms", "Lodestar in position. Escort, you are relieved. Return to the Halcyon."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [600, -200, -1400] }] },
+    ],
+    protect: ["lodestar"], protectMin: 1,
+    win: "m8", lose: "m8", post: { win: "cs_lodestar_falls", lose: "cs_lodestar_falls" },
+  },
+  m8: {
+    title: "The Hunter Returns Home", system: "Varenne Gate", date: "30 April 2711", act: 2, pre: "cs_betrayal",
+    ship: "lancer", wing: ["ricochet"], scramble: true,
+    brief: [
+      ["varga", "No time for a briefing. Ka'den is in a stolen Vhaal heading for the Vharr lines with the Lodestar's schematics and everything we know about the Tectonic Shear program."],
+      ["varga", "Bring him back. If you can't bring him back, kill him."],
+      ["ricochet", "Halo was my friend too. I'm right behind you."],
+    ],
+    objectives: ["Intercept the traitor Rhul Ka'den", "Destroy his escort", "Return to the Halcyon"],
+    secondary: [{ k: "hull", min: 0.5, text: "Finish the duel with your hull above 50%" }, { k: "wingAlive", text: "Ricochet survives" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "varenne", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Pursuit", env: { asteroids: 1, nebula: 1 }, obj: "duel", target: "ember",
+        groups: [{ type: "vhaal", n: 1, ace: "ember", id: "ember", target: "player", pos: [0, 0, -2200] }, { type: "dhakar", n: 2 }],
+        events: [{ at: "arrive", say: [["ember", "You came yourself. Of course you did. I told them you would."], ["ember", "Turn back, my friend. I do not know how to stop what is inside me. I only know how to hunt."]] },
+                 { at: "dead:ember", say: [["ember", "Heh. Good. Good kill... It was always going to be you."], ["ember", "Halo was right about you. Tell them... the hunter... came home."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m9", lose: "m9", post: { win: "cs_ember_dies", lose: "cs_ember_escapes" },
+  },
+  m9: {
+    title: "Vesper's Silence", system: "Ghul Ankoth", date: "09 May 2711", act: 2, pre: "cs_vesper",
+    ship: "warden", wing: ["frost", "ricochet"],
+    brief: [
+      ["deacon", "I've been seconded to Fleet Intelligence. I'll be brief, because none of us has the stomach for long."],
+      ["deacon", "Dr. Anneke Voss designed a weapon called the Tectonic Shear. Kethra, the Vharr homeworld, sits on an unstable mantle. One device, placed correctly, and the planet tears itself apart. Voss is being held at the prison station Ghul Ankoth."],
+      ["deacon", "Marines go in by shuttle. You keep them alive. Kill the station's turrets on the way in. Those are its eyes."],
+      ["deacon", "Colonel Okonkwo was taken trying to learn where Voss was held. We owe her this."],
+    ],
+    objectives: ["Destroy the prison station's defense turrets", "Protect the marine shuttle", "Return to the Halcyon"],
+    secondary: [{ k: "protectAll", text: "Every marine shuttle survives" }, { k: "kills", n: 6, text: "Score six kills" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "deadmoon", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1", env: { asteroids: 1 }, obj: "clear", groups: [{ type: "krosk", n: 2 }, { type: "skrel", n: 2 }],
+        events: [{ at: "arrive", say: [["ricochet", "This one's for Vesper. Light 'em up."]] }] },
+      { name: "Nav 2 — Ghul Ankoth", env: { planet: "deadmoon" }, obj: "protect",
+        friends: [{ type: "shuttle", id: "marines", pos: [0, -20, 250] }],
+        groups: [{ type: "prison", n: 1, id: "prison", pos: [0, 0, -3400] }, { type: "dhakar", n: 2, target: "marines" }, { type: "vhaal", n: 2 }],
+        events: [{ at: "arrive", say: [["comms", "Marine One, beginning approach. Escort, knock out those turrets!"]] },
+                 { at: "t:70", say: [["comms", "Marine One: we're docked. We have her! Dr. Voss is aboard! Pulling out!"]], fn: "marinesDone" }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    protect: ["marines"], protectMin: 1,
+    win: "m9b", lose: "l2", post: { win: "cs_voss", lose: "cs_voss_lost" },
+  },
+  m9b: {
+    title: "Ghost Signal", system: "Calder's Reach — the Ashfall Expanse", date: "14 May 2711", act: 3, script: "ghost",
+    ship: "warden", wing: ["ricochet"],
+    brief: [
+      ["deacon", "Fleet Intelligence has a Vharr supply convoy staging in the Ashfall Expanse. Two Thrask haulers and their escort, feeding the Hunt-Mothers still loose in Calder."],
+      ["deacon", "Two-ship flight. {callsign} and Ricochet. Kill the haulers, kill the escort, come home. Short and clean."],
+      ["ricochet", "Me and {callsign}. Best two-ship on the Halcyon. They don't stand a chance."],
+      ["deacon", "The Ashfall is full of sensor ghosts. Ion storms, old wrecks. Don't go chasing shadows."],
+      ["ricochet", "Who, me?"],
+    ],
+    objectives: ["Destroy the Thrask supply convoy and its escort", "Return to the Halcyon"],
+    secondary: [{ k: "stat", key: "ghostSquadron", text: "Destroy the entire enemy squadron before it can return to its ship" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "calder", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Ashfall Convoy", env: { nebula: 1, asteroids: 1, planet: "calder" }, obj: "clear",
+        groups: [{ type: "vtransport", n: 1, id: "conv1", pos: [-500, -120, -3400] }, { type: "vtransport", n: 1, id: "conv2", pos: [450, 60, -3900] }, { type: "dhakar", n: 2 }, { type: "skrel", n: 2 }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m10", lose: "m10", post: { win: "cs_ricochet", lose: "cs_ricochet" },
+  },
+  m10: {
+    title: "The Graven", system: "Hyperion Drift", date: "20 May 2711", act: 3,
+    ship: "wraith", wing: ["frost"],
+    brief: [
+      ["deacon", "The Tectonic Shear is built. Dr. Voss calls it the ugliest thing she's ever made. The Wraith is the only ship that can carry it to Kethra unseen."],
+      ["deacon", "Today is a live trial of the Wraith's cloak in the Hyperion Drift. Engage the cloak with the K key, or click the left stick on a controller. While cloaked you can't fire, and it drains fuel fast."],
+      ["frost", "Sh'kara's squadron patrols Hyperion."],
+      ["deacon", "Aye, Frost. That's the other reason you're going. She's killed forty-four of ours. Make it stop at forty-four."],
+    ],
+    objectives: ["Test the Wraith cloak", "Destroy Sh'kara the Graven", "Return to the Halcyon"],
+    secondary: [{ k: "killType", type: "vhaal", n: 3, text: "Destroy all three Ashen Talon Vhaals" }, { k: "time", sec: 480, text: "Complete the trial in under eight minutes" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "hyperion", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Trial", env: { nebula: 1 }, obj: "clear", groups: [{ type: "dhakar", n: 3 }],
+        events: [{ at: "arrive", say: [["frost", "Patrol, three Dhakars. Try the cloak. Slip behind them."]] }] },
+      { name: "Nav 2 — The Graven", env: { asteroids: 1, planet: "hyperion" }, obj: "duel", target: "shkara",
+        groups: [{ type: "vhaal", n: 1, ace: "shkara", id: "shkara", target: "player", pos: [0, 0, -2400] }, { type: "vhaal", n: 2 }],
+        events: [{ at: "arrive", say: [["shkara", "I know that hull shape, little one. Hale's Drift. I promised I would remember you."], ["shkara", "Your name will be my forty-fifth stripe."]] },
+                 { at: "dead:shkara", say: [["shkara", "A worthy... hunt. Take... my name..."], ["frost", "...She's gone. Forty-four. It stops at forty-four."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m11", lose: "m11", post: { win: "cs_m10_win", lose: "cs_m10_lose" },
+  },
+  m11: {
+    title: "Pyre-Mother", system: "Kethra Approach", date: "28 May 2711", act: 3, pre: "cs_final_council",
+    ship: "longbow", wing: ["frost", "deacon"],
+    brief: [
+      ["varga", "The Pyre-Mother stands between the fleet and Kethra. Its plasma lance burned Corinth. Today we kill it."],
+      ["varga", "Longbows will carry torpedoes. Kill the shield generators first if you can. The Heir-Prince flies a red Vhaal and he will come for you personally. He knows your name now."],
+      ["deacon", "Good. Let him come. Danny would have wanted a front-row seat for this."],
+      ["varga", "This is the battle the whole war has been waiting for. Make it count."],
+    ],
+    objectives: ["Destroy the dreadnought Kar'thask", "Defeat the Heir-Prince Kaerr'Vosh", "Return to the Halcyon"],
+    secondary: [{ k: "killType", type: "vhaal", n: 2, text: "Destroy the Blood-Crown's Vhaal escorts" }, { k: "wingAlive", text: "Frost and Deacon both come home" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "kethra", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }, { type: "resolute", id: "resolute", pos: [900, 100, -600] }] },
+      { name: "Nav 1 — The Pyre", env: { planet: "kethra", nebula: 1 }, obj: "destroy", target: "pyre",
+        groups: [{ type: "pyre", n: 1, id: "pyre", pos: [0, -200, -5200] }, { type: "krosk", n: 2 }, { type: "vhaal", n: 2 }],
+        events: [{ at: "arrive", say: [["kaerr", "So. The Graven's killer. The prey that bites. I have hung forty human helmets on this bridge, and yours will be the forty-first."]] },
+                 { at: "t:40", spawn: [{ type: "bloodcrown", n: 1, ace: "kaerr", id: "kaerr", target: "player" }], say: [["kaerr", "Come then. Face me. Let the Hunt decide."]] },
+                 { at: "dead:kaerr", say: [["kaerr", "The... Hunt... is not... over..."], ["deacon", "THE PRINCE IS DOWN! That one was for Danny!"]] },
+                 { at: "dead:pyre", say: [["frost", "The Pyre-Mother is breaking apart. For Corinth."]] }] },
+      { name: "Halcyon", home: true, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+    ],
+    win: "m12", lose: "m12", post: { win: "cs_prince_falls", lose: "cs_prince_falls" },
+  },
+  m12: {
+    title: "Heart of the Hunt", system: "Kethra", date: "30 May 2711", act: 3, pre: "cs_last_choice",
+    ship: "wraith", wing: ["deacon"], loadout: { shear: 1, ir: 4, ff: 4 },
+    brief: [
+      ["deacon", "This is it, kid. One run. Kethra's defense grid can't see the Wraith while it's cloaked. Uncloak only to fire."],
+      ["deacon", "Fight through the orbital picket, then cloak and close on the target node. Hold the reticle on it to lock the Shear, fire, and get out before the shockwave."],
+      ["deacon", "I'll be right behind you. I've been behind you since your first day. I'm not stopping now."],
+    ],
+    objectives: ["Break through the orbital picket", "Deliver the Tectonic Shear to the target node", "Escape"],
+    secondary: [{ k: "kills", n: 7, text: "Score seven kills on the run in" }, { k: "hull", min: 0.4, text: "Reach the node with your hull above 40%" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "kethra", sun: 1 }, friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }] },
+      { name: "Nav 1 — Picket", env: { planet: "kethra", asteroids: 1 }, obj: "clear", groups: [{ type: "krosk", n: 2 }, { type: "vhaal", n: 2 }, { type: "dhakar", n: 2 }],
+        events: [{ at: "arrive", say: [["deacon", "Picket line. Let's be quick about it."]] }] },
+      { name: "Nav 2 — Target Node", env: { planet: "kethraClose" }, obj: "destroy", target: "node",
+        groups: [{ type: "node", n: 1, id: "node", pos: [0, -400, -4000] }, { type: "vhaal", n: 3 }],
+        events: [{ at: "arrive", say: [["deacon", "Target node marked. Cloak and close, then lock the Shear!"]] },
+                 { at: "dead:node", say: [["deacon", "Shear deployed! Burn, kid, BURN! Get clear!"]], fn: "finale" }] },
+    ],
+    final: true,
+    win: "END", lose: "END", post: { win: "cs_ending", lose: "cs_ending_fail" },
+  },
+  // ------------- losing path
+  l1: {
+    title: "Rearguard", system: "Calder's Reach — Vigil Station", date: "—", act: 1, losing: true,
+    ship: "lancer", wing: ["deacon"],
+    brief: [
+      ["varga", "We're pulling back to Vigil Station. The Vharr smelled weakness and they're coming for the Halcyon while we're slow."],
+      ["deacon", "A bad week, kid. Happens to all of us. The trick is not letting it become a bad month. Fly with me today."],
+      ["varga", "Hold the line at the station until the Halcyon is in dock. Bombers are the priority."],
+    ],
+    objectives: ["Defend the Halcyon", "Destroy all Vharr bombers", "Land on the Halcyon"],
+    secondary: [{ k: "killType", type: "gorrak", n: 3, text: "Destroy all three bombers" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "calder", sun: 1 }, obj: "protect",
+        friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }, { type: "station", id: "station", pos: [1600, 300, -3000] }],
+        groups: [{ type: "gorrak", n: 2, target: "halcyon", pos: [0, 300, -4500] }, { type: "dhakar", n: 3 }],
+        events: [{ at: "t:5", say: [["comms", "All fighters: Gorrak bombers inbound on the Halcyon! Intercept!"]] },
+                 { at: "t:50", spawn: [{ type: "gorrak", n: 1, target: "halcyon" }, { type: "skrel", n: 2 }], say: [["deacon", "Second wave! Bombers first, kid!"]] }] },
+    ],
+    protect: ["halcyon"], protectMin: 1, defend: true,
+    win: "m4", lose: "l2", post: { win: "cs_l1_win", lose: "cs_l1_lose" },
+  },
+  l2: {
+    title: "Last Stand", system: "Calder's Reach — Vigil Station", date: "—", act: 2, losing: true,
+    ship: "warden", wing: ["frost", "ricochet"],
+    brief: [
+      ["varga", "I won't dress this up. A Hunt-Mother group is on us. Vigil Station is evacuating. If the Halcyon falls, Calder falls with it."],
+      ["varga", "Every pilot flies. Every gun fires. There is no line behind us."],
+      ["ricochet", "Then let's make 'em pay for every meter."],
+    ],
+    objectives: ["Defend the Halcyon at all costs", "Destroy the Vharr strike force"],
+    secondary: [{ k: "killType", type: "gorrak", n: 4, text: "Destroy four bombers" }, { k: "killType", type: "ralthak", n: 1, text: "Destroy the corvette" }],
+    navs: [
+      { name: "Halcyon", start: true, env: { planet: "calder", sun: 1, debris: 1 }, obj: "protect",
+        friends: [{ type: "halcyon", id: "halcyon", pos: [0, -150, -1000] }, { type: "resolute", id: "resolute", pos: [1000, 100, -1600] }],
+        groups: [{ type: "gorrak", n: 3, target: "halcyon", pos: [0, 300, -4800] }, { type: "krosk", n: 2 }, { type: "ralthak", n: 1, id: "ralthak3", pos: [-1200, 200, -3600] }],
+        events: [{ at: "t:4", say: [["varga", "All batteries, open fire! Fighters, kill those bombers!"]] },
+                 { at: "t:55", spawn: [{ type: "gorrak", n: 2, target: "halcyon" }, { type: "vhaal", n: 2 }], say: [["frost", "Another bomber wave. I'm low on missiles."]] }] },
+    ],
+    protect: ["halcyon"], protectMin: 1, defend: true,
+    win: "RESUME", lose: "LOST", post: { win: "cs_l2_win", lose: "cs_halcyon_lost" },
+  },
+};
+
+// ---------------------------------------------------------------- CINEMATICS
+// shot: { scene, dur, cam, lines:[[who,text]], title?, caption?, choice? }
+// scenes are staged by the engine (see game.js buildCutscene)
+export const CUTSCENES = {
+  cs_intro: [
+    { scene: "space_war", dur: 7, title: "2711", caption: "Twenty-six years ago, the Vharr Hegemony found humanity." },
+    { scene: "pyre_reveal", dur: 7, caption: "They called it the Great Hunt. They have burned eleven worlds since." },
+    { scene: "carrier_flyby", dur: 7, caption: "On the Calder front, one old carrier holds the line." },
+    { scene: "title", dur: 6, title: "HALCYON WING" },
+  ],
+  cs_arrival: [
+    { scene: "shuttle_arrival", dur: 7, caption: "CNS Halcyon. Calder's Reach. Day 1.", lines: [["comms", "Shuttle Kappa-Nine, you are cleared to land on deck two. Welcome to the Halcyon."]] },
+    { scene: "talk", who: ["rabbit"], dur: 0, lines: [["rabbit", "Another fresh face. Rookie, rule one on my deck: you bring my ships back. You can come back in pieces, but the ship comes back in one."]] },
+    { scene: "talk", who: ["ricochet"], dur: 0, lines: [["ricochet", "...So you're the replacement."], ["ricochet", "That's Tally's bunk. His things are still in the locker. Don't touch them. Don't sit in his chair in the ready room. Don't talk to me unless it's on comms."]] },
+    { scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "Don't mind Ricochet. Today's not a good day for him. Most days aren't, lately."], ["deacon", "Don't mind Rabbit, she loves us all in her own terrifying way. Tomas Reyes. They call me Deacon."], ["deacon", "Let me give you the only advice that matters. Watch your six, trust your wingman, and never, ever play cards with Spark."]] },
+    { scene: "talk", who: ["halo"], dur: 0, lines: [["halo", "Hey! You made it too! They put me in Vigil Squadron as well. Can you believe it? Actual aces. I saw Ricochet's killboard, it's ridiculous."], ["halo", "Oh, and there's a Vharr pilot. On our side. A defector. Nobody sits with him. I'm going to sit with him tomorrow."]] },
+  ],
+  cs_m1_win: [{ scene: "landing", dur: 5, caption: "Mission accomplished." }, { scene: "talk", who: ["spark"], dur: 0, lines: [["spark", "You did good out there. Here. Your crane. Keep it, it worked."]] }],
+  cs_m1_lose: [{ scene: "landing", dur: 5, caption: "You return to the Halcyon." }, { scene: "talk", who: ["vesper"], dur: 0, lines: [["vesper", "Scouts got away. They'll report our patrol pattern. Learn from it. Quickly."]] }],
+  cs_m2_win: [
+    { scene: "talk", who: ["ricochet"], dur: 0, lines: [["ricochet", "Not bad, rookie. Not as good as me, obviously. But not bad."]] },
+    { scene: "talk", who: ["ember"], dur: 0, lines: [["ember", "You are the new pilot. I am Rhul Ka'den. They call me Ember, because the humans think it is funny that something survived a fire."], ["ember", "Your friend, Halo, sat with me today. She asked about my children. No human has asked about my children."]],
+      choice: { q: "How do you answer Ember?", options: [{ text: "\"Tell me about them.\"", morale: { ember: 1 }, flag: "emberKids" }, { text: "Say nothing and leave.", morale: { ember: -1 } }] } },
+  ],
+  cs_m2_lose: [{ scene: "talk", who: ["vesper"], dur: 0, lines: [["vesper", "We lost people out there. Civilians. They trusted us to bring them home."], ["vesper", "I'm not going to tell you it wasn't your fault. I'm going to tell you that the next ones are counting on you to be better."]] }],
+  cs_m3_win: [
+    { scene: "medal", dur: 0, medal: "bronze", lines: [["varga", "For valor in the destruction of the corvette Ral'thak, the Bronze Star. Well done, {rank}."]] },
+    { scene: "talk", who: ["frost"], dur: 0, lines: [["frost", "You flew well against the Graven. She'll want you now. She never forgets a ship."], ["frost", "...I'm glad you made it back."]] },
+  ],
+  cs_m3_lose: [{ scene: "talk", who: ["frost"], dur: 0, lines: [["frost", "The corvette escaped. And she saw you. Sh'kara never forgets a ship."]] }],
+  cs_corinth: [
+    { scene: "corinth_burn", dur: 8, caption: "New Corinth. 310,000 souls.", lines: [["comms", "...repeat, this is New Corinth Civil Defense, they are firing on the cities, please, anyone—"]] },
+    { scene: "pyre_reveal", dur: 6, caption: "The Pyre-Mother.", lines: [["kaerr", "Humans of the Concord. Your world was weak and so it burns. Yield your throats, or every world you have will glow like this one."]] },
+  ],
+  cs_m4_win: [
+    { scene: "landing", dur: 4, caption: "Forty-one survivors recovered from New Corinth." },
+    { scene: "talk", who: ["ember"], dur: 0, lines: [["ember", "Forty-one. Out of three hundred thousand."], ["ember", "My clan was burned because my elders said this was not hunting. It was butchery. The Blood-Crown agreed it was not hunting. He simply did not care."]] },
+    { scene: "talk", who: ["halo"], dur: 0, lines: [["halo", "I saw the pods come in. There was a little girl in one of them holding a toy shaped like a Lancer. Like our Lancers."], ["halo", "We have to win this. We have to."]] },
+  ],
+  cs_m4_lose: [{ scene: "talk", who: ["varga"], dur: 0, lines: [["varga", "The shuttle didn't make it back."], ["varga", "Ring the bell for them, {rank}. Every one."]] }],
+  cs_m5_win: [
+    { scene: "medal", dur: 0, medal: "silver", lines: [["varga", "For the destruction of the destroyer Ka'ven, the Silver Star."]] },
+    { scene: "talk", who: ["vesper"], dur: 0, lines: [["vesper", "When I was your age I thought the war would be over by the time I was thirty. I'm forty-four."], ["vesper", "Keep flying like that and maybe you'll be the one who ends it. Then you can come tell me I was wrong."]] },
+  ],
+  cs_m5_lose: [{ scene: "talk", who: ["vesper"], dur: 0, lines: [["vesper", "The destroyer got away. It'll be back with friends. Get some sleep. You'll need it."]] }],
+  cs_spark_letter: [
+    { scene: "talk", who: ["spark"], dur: 0, lines: [["spark", "Can I tell you something? Kenji and I had a deal. A thousand paper cranes for a wish. That's the old story."], ["spark", "I've folded nine hundred and ninety-nine. I'm saving the last one for after Tessaly."], ["spark", "Played cards with Deacon last night. Aces and eights. He went pale. Old pilot superstition. Isn't that silly?"]] },
+  ],
+  cs_spark_funeral: [
+    { scene: "spark_ram", dur: 7, caption: "Tessaly. 11 April 2711.", lines: [["spark", "Kenji. I'm coming."]] },
+    { scene: "funeral", dur: 10, caption: "Captain Yuki \"Spark\" Tanaka. 2684 – 2711.", lines: [["varga", "Captain Yuki Tanaka, called Spark. Thirty-one kills. A Hunt-Mother carrier, broken by her hand."], ["varga", "She was the best of us. She always said the dead fly in a squadron of their own, and that it has room for everyone. Ring the bell."]] },
+    { scene: "talk", who: ["ricochet"], dur: 0, lines: [["ricochet", "I told her to eject. I told her. Why didn't she..."], ["ricochet", "She left this on my bunk. It's a paper crane. The thousandth one."]] },
+  ],
+  cs_ricochet: [
+    { scene: "landing", dur: 6, caption: "The Halcyon. One fighter comes home." },
+    { scene: "talk", who: ["rabbit"], dur: 0, lines: [["rabbit", "...Where's Danny?"], ["rabbit", "No. Don't you stand there like that. Where is he?"]] },
+    { scene: "funeral", dur: 11, caption: "Lieutenant Daniel \"Ricochet\" Kowalski. 2687 – 2711.", lines: [["deacon", "Ring it once for Danny. Once for Owen Marsh, who he never stopped flying for."], ["deacon", "And once for every one of us he dragged home when he had no business coming back himself."]] },
+    { scene: "talk", who: ["varga"], dur: 0, lines: [["varga", "I've watched your gun camera. Every second of it. No ship in this fleet could have crossed that distance in time. Not one."], ["varga", "Nobody on this carrier blames you. If I hear that anybody does, they'll answer to me. And that includes you."]] },
+    { scene: "talk", who: ["frost", "deacon"], dur: 0, lines: [["frost", "He told me once you were the best wingman he'd had since Tally. He made me promise not to tell you."], ["deacon", "Then we finish it. Together. Every pilot, every deck hand, every one of us. For Spark. For Halo. For Danny."], ["frost", "...For Danny."]] },
+    { scene: "title", dur: 7, title: "ACT III", caption: "One squadron. One war. One more run." },
+  ],
+  cs_lodestar_brief: [
+    { scene: "lodestar_reveal", dur: 7, caption: "CNS Lodestar. Project designation: GRAVESEND.", lines: [["thorne", "Behold the end of the war, gentlemen."]] },
+  ],
+  cs_lodestar_falls: [
+    { scene: "lodestar_dies", dur: 9, caption: "Ashkar Minor. Four hours later.", lines: [["comms", "Mayday, mayday, Lodestar to fleet! Vharr dreadnought decloaking on our flank! They're targeting the reactor spine, they knew exactly where to—"]] },
+    { scene: "talk", who: ["thorne"], dur: 0, lines: [["thorne", "They knew the flight path. They knew the one weakness in the reactor spine. Only eleven people aboard the Halcyon had those plans."], ["thorne", "One of them is a Vharr."]] },
+  ],
+  cs_betrayal: [
+    { scene: "alarm", dur: 6, caption: "0340 hours. Flight deck.", lines: [["comms", "Security to hangar two! Security to hangar two! Pilot down!"]] },
+    { scene: "talk", who: ["halo"], dur: 0, lines: [["halo", "...I followed him. He was... transmitting. He looked at me like he didn't know me. He kept saying... the hunter returns home..."], ["halo", "Tell him... tell him I still... sat with him..."]] },
+    { scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "Halo's gone, kid."], ["deacon", "Intelligence found it in his file, hidden in the defection debrief. A buried phrase. A sleeper. Whatever Ember was, part of him was built by the Blood-Crown to do exactly this."], ["deacon", "He's in a stolen Vhaal. You're on the deck in five."]] },
+  ],
+  cs_ember_dies: [
+    { scene: "ember_wreck", dur: 7, caption: "Varenne Gate." },
+    { scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "His flight recorder survived. The last thing he did was erase the data he stole. Every byte of it. The Vharr got nothing more."], ["deacon", "Whatever they put inside him, there was something left of the man, there at the end. I'll pray for him. You don't have to."]] },
+  ],
+  cs_ember_escapes: [{ scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "He jumped out. He's with them now, and so is everything he knows."], ["deacon", "We'll meet him again. I'd rather we didn't."]] }],
+  cs_vesper: [
+    { scene: "broadcast", dur: 0, who: ["kaerr"], lines: [["kaerr", "Humans of the Halcyon. Your Hunt-Leader, the one you call Vesper, came seeking secrets in my territory."], ["kaerr", "She would not yield. She would not bow. She died with her throat bared and her eyes open. I honor her with this: her name will be added to mine."], ["kaerr", "Send me more like her. I am still hungry."]] },
+    { scene: "bell", dur: 8, caption: "Lt. Colonel Mara \"Vesper\" Okonkwo. 2667 – 2711.", lines: [["varga", "She knew the name of every pilot she ever lost. We will know hers."]] },
+  ],
+  cs_voss: [
+    { scene: "talk", who: ["voss"], dur: 0, lines: [["voss", "You're the pilot who brought me out. Thank you. I think."], ["voss", "Do you understand what I designed? Not a bomb. A wound. Kethra has four billion people on it. Children. Farmers. Poets. The Vharr have poets, did you know?"], ["voss", "Thorne will want me to finish it. I will. Because I've seen Corinth. And I will never forgive myself either way."]] },
+  ],
+  cs_voss_lost: [{ scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "The shuttle was hit on the way out. Voss survived. The marines didn't. Not all of them."], ["deacon", "Fleet is pulling everything back to protect her. We regroup, then we go."]] }],
+  cs_m10_win: [
+    { scene: "medal", dur: 0, medal: "gold", lines: [["varga", "For the destruction of the Vharr ace known as Sh'kara the Graven, killer of forty-four Concord pilots: the Gold Star."]] },
+    { scene: "talk", who: ["frost"], dur: 0, lines: [["frost", "My first squadron. She killed three of them. I've thought about her every day for four years."], ["frost", "I thought I'd feel something. I just feel tired. Is that normal?"]] },
+  ],
+  cs_m10_lose: [{ scene: "talk", who: ["frost"], dur: 0, lines: [["frost", "She's still out there. We'll see her again. At Kethra."]] }],
+  cs_final_council: [
+    { scene: "talk", who: ["thorne"], dur: 0, lines: [["thorne", "Ladies and gentlemen. In seventy-two hours, the Halcyon leads the fleet into Kethra. The Pyre-Mother defends the homeworld. Kill it, and the way is open."], ["thorne", "Then the Tectonic Shear goes down on the target node, and the Vharr Hegemony ceases to exist."]] },
+    { scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "Admiral. There is a second target. The shipyard moon Ashkar, in Kethra's orbit. Every hull the Hegemony builds is laid down there. Voss says the Shear would split it just as well."], ["deacon", "Break the moon and they can't fight. Break the planet and there is no one left to surrender."]] },
+    { scene: "talk", who: ["thorne"], dur: 0, lines: [["thorne", "The pilot carries the device, Major. The pilot will choose the node. I'll put it in writing, so history knows who to thank or to blame."]] },
+  ],
+  cs_prince_falls: [
+    { scene: "pyre_dies", dur: 9, caption: "Kethra Approach.", lines: [["varga", "All ships, all ships: the Pyre-Mother is down. The way to Kethra is open."]] },
+    { scene: "talk", who: ["frost"], dur: 0, lines: [["frost", "Danny would have been insufferable about this."], ["frost", "...I would have let him."]] },
+  ],
+  cs_last_choice: [
+    { scene: "talk", who: ["voss"], dur: 0, lines: [["voss", "The Shear is armed. I've programmed both solutions. Kethra's mantle node, or the core of the moon Ashkar."], ["voss", "The planet ends the Hegemony forever. The moon ends their ability to wage war, and leaves four billion of them to decide what to become."], ["voss", "I can't make this choice. They tell me you have to."]],
+      choice: { q: "Where will you deliver the Tectonic Shear?", options: [
+        { text: "Kethra. End the Hunt forever. Corinth demands it.", flag: "targetKethra" },
+        { text: "Ashkar, the shipyard moon. Break their fleet, spare their world.", flag: "targetAshkar" }] } },
+  ],
+  cs_ending: [
+    { scene: "planet_breaks", dur: 11, caption: "" },
+    { scene: "ending_text", dur: 0 },
+  ],
+  cs_ending_fail: [{ scene: "ending_text_fail", dur: 0 }],
+  cs_l1_win: [{ scene: "talk", who: ["deacon"], dur: 0, lines: [["deacon", "Held the line. That's what matters. Now we take the fight back to them."]] }],
+  cs_l1_lose: [{ scene: "talk", who: ["varga"], dur: 0, lines: [["varga", "We lost the station. The Halcyon is damaged but afloat. We fall back again. There aren't many places left to fall back to."]] }],
+  cs_l2_win: [{ scene: "talk", who: ["varga"], dur: 0, lines: [["varga", "We're still here. Ring the bell for the ones who aren't, then get back in the fight. The war won't wait for us to grieve."]] }],
+  cs_halcyon_lost: [{ scene: "halcyon_dies", dur: 10, caption: "The CNS Halcyon. 2677 – 2711." }, { scene: "ending_text_lost", dur: 0 }],
+};
+
+export const ENDINGS = {
+  targetKethra: {
+    title: "THE SILENCE OF KETHRA",
+    text: [
+      "At 0612 fleet time, the Tectonic Shear reached Kethra's mantle. The planet broke apart over nine hours.",
+      "The Hegemon died in the palace at Vhar-Ankh. Four billion Vharr died with him. Two hundred million more, scattered across colony worlds, signed the Treaty of Calder eleven days later. They had no one left to ask.",
+      "The war was over. Humanity celebrated for a week.",
+      "You were given the Concord Star. You did not attend the ceremony.",
+      "On the Halcyon, Captain Varga rang the bell once more. Nobody asked him who it was for.",
+    ],
+  },
+  targetAshkar: {
+    title: "THE BROKEN MOON",
+    text: [
+      "At 0612 fleet time, the Tectonic Shear reached the core of Ashkar. The shipyard moon split into three pieces and the Hegemony's fleet was never built again.",
+      "Kethra watched its moon break in the night sky. Four billion Vharr saw it. On the seventh day, the Council of Clans removed the Hegemon from his throne and sent a single unarmed ship to Calder.",
+      "It carried a helmet. Lt. Colonel Mara Okonkwo's. Returned with honors.",
+      "The Treaty of Calder was signed eleven days later. Admiral Thorne called it a half-victory. Dr. Voss called it the only kind worth having.",
+      "You were given the Concord Star. On the Halcyon, Captain Varga rang the bell for every pilot lost. It took most of the night.",
+    ],
+  },
+  fail: { title: "THE HUNT CONTINUES", text: ["The strike on Kethra failed.", "The war would go on for another eleven years.", "Your name was added to the bell."] },
+  lost: { title: "CALDER FALLS", text: ["The Halcyon died with most of her crew at Vigil Station.", "Without her, the Calder front collapsed in six weeks. The Vharr reached the core worlds the following spring.", "Somewhere a bell rang, and then it stopped."] },
+};
+
+// ---------------------------------------------------------------- LOUNGE VISITS
+// Most of the squadron is flying, sleeping or on deck; before each sortie only one or two pilots
+// are in the lounge. Each has a reaction to your last sortie (by how well you flew it) and a topic:
+// gossip, rumour, a story about someone who didn't come back, or a rival's needle.
+// {rank} and {callsign} are filled in at display time.
+export const REACT = {
+  ricochet: {
+    perfect: ["Okay. Okay, fine. Every objective, clean. I'm not saying you're better than me. I'm saying you're not embarrassing me anymore.", "Saw your gun camera. That wasn't luck. Don't let it go to your head, {callsign}, there's no room in there with mine."],
+    ok: ["Job done, I guess. Rabbit says you left half the bonus targets alive. I'd have gotten them.", "You got the primaries. My grandmother could get the primaries, {rank}."],
+    fail: ["Well, well. The Academy's golden child. How's the view from the bottom of the killboard?", "Heard about your sortie. Don't worry, I'm sure the Vharr will put it on a plaque for you."],
+  },
+  ricochet2: {
+    perfect: ["Every objective, partner! That's how we do it! Tally would've bought you a drink. Since he can't, I will.", "Clean sheet! I'm putting your name on the board right under mine. ...Okay, right next to mine."],
+    ok: ["Job done, nobody dead. I'll take it. Next time we get the bonus targets too, yeah?", "Good flying. You left some on the table, but good flying."],
+    fail: ["Hey. Hey. It was a bad one, that's all. Tally had a whole month of bad ones. Shake it off.", "Forget it. Tomorrow you fly, I watch your six, we fix it. That's what partners do."],
+  },
+  spark: {
+    perfect: ["Every objective! Come here, I'm folding you a crane. A gold one. I've been saving the gold paper.", "That was beautiful flying, {callsign}. Vesper actually smiled. I saw it. Nobody believes me."],
+    ok: ["You came back. That's the part that counts. The rest comes with hours.", "Not bad at all. Next time, go after the bonus targets. Vesper notices."],
+    fail: ["Hey. Look at me. Everyone has the bad one. Mine was worse, I promise. Want to hear about it?", "It wasn't your day. Sleep, eat something, fly again. That's the whole secret."],
+  },
+  deacon: {
+    perfect: ["Clean sheet. I've seen pilots go a whole career without one. Write it down somewhere, {rank}. You'll want to remember it.", "Thorne read your after-action report aloud in the wardroom. He doesn't do that."],
+    ok: ["You did the job. That's more than some manage. The extras come when you stop being afraid of the job.", "Good enough is good enough, until the day it isn't. Push a little harder next time."],
+    fail: ["We all have nights like this. The trick is not letting tomorrow's sortie pay for it.", "I won't tell you it doesn't matter. It does. But you're still here to fix it. Plenty aren't."],
+  },
+  frost: {
+    perfect: ["...Good flying.", "Every objective. ...I noticed."],
+    ok: ["You came back. Good.", "Adequate. You'll be better."],
+    fail: ["It happens. Don't let it happen twice.", "...Get some sleep."],
+  },
+  halo: {
+    perfect: ["You were AMAZING! I heard it on the open channel! Every single objective! I'm telling my brother about you!", "We're from the same class and you're already showing off. I'm so proud I could scream."],
+    ok: ["Hey, you made it back! That's what matters. Rabbit says your ship barely has a scratch. Well, some scratches.", "You did it! Next time we both nail the bonus targets, deal?"],
+    fail: ["Hey. Ricochet's being awful, ignore him. You'll get them next time.", "It's okay. I froze on my first escort too. Want to get a drink? Juice. Rabbit says no drinks before sorties."],
+  },
+  ember: {
+    perfect: ["In my clan we would sing for such a hunt. I will not sing. Humans find it alarming.", "Every target taken. You hunt like one who was born to it."],
+    ok: ["The hunt was finished. That is enough for one day.", "You returned. In war that is the first honour."],
+    fail: ["A hunt that fails teaches more than ten that succeed. The Vharr say this to children. It is still true.", "Do not carry this into the next sortie. It is heavy, and the cockpit is small."],
+  },
+  rabbit: {
+    perfect: ["Not a scratch I didn't expect, every target down. I could kiss you. I won't. But I could.", "That's how you bring a ship home, {rank}. Somebody tell Ricochet to take notes."],
+    ok: ["Ship's in one piece. Mostly. I'll have her ready by morning.", "You did the job. My crew did theirs. That's a good day on my deck."],
+    fail: ["Do you know how long it takes to replace an armour plate? I do. I'm going to spend it thinking about you.", "I don't care about the mission, that's the brass's problem. I care that my ship came back. Barely."],
+  },
+  voss: {
+    perfect: ["They told me you hit every target. I don't know what that means, but they said it like it was good.", "Thank you. For getting home. People keep not getting home."],
+    ok: ["You're back. Good. I count, you know. Everyone who launches. Everyone who lands.", "I heard it went well enough. I'm learning that's the best anyone says."],
+    fail: ["I'm sorry. I don't know what else people say.", "It's not your fault the universe is this size and this cruel."],
+  },
+};
+export const LOUNGE_VISITS = {
+  m1: [["halo", ["We actually made it! Vigil Squadron! I keep touching the patch to make sure it's real.", "Did you see Ricochet's killboard? Thirty-one kills. I've got zero. You've got zero. We're going to change that, right?"]],
+       ["ricochet", ["Tally's replacement. The Academy's top student. Funny, I don't remember asking for either.", "You want advice? Fly your sortie, stay off my wing, and don't get comfortable in his bunk."]]],
+  m2: [["spark", ["About Danny. Ricochet. He isn't angry at you, not really. You're flying Tally's slot. Owen Marsh. They went through flight school together, lived out of each other's pockets for eight years.", "Three weeks ago, over the Enyo Belt, Tally was on Danny's wing when a Krosk got behind him. Danny watched it happen. Then the Navy sent you. Give him time."]],
+       ["ricochet", ["Spark told you about Tally, didn't she. Great. Wonderful. Now you can feel sorry for me.", "Don't. Just keep up tomorrow. If I have to save your transport for you, I'm putting it on my board."]]],
+  m3: [["deacon", ["Before you go to Hale's Drift. Frost's old squadron was the Lantern Wing. Eleven pilots. Sh'kara's Talons caught them refuelling.", "Frost was the only one who came home. Don't ask her about it. Just fly close to her."]],
+       ["ember", ["You fly against Sh'kara's sisters tomorrow. In my clan she was a story told to frighten young hunters.", "She takes the name of every pilot she kills and wears it as a stripe. Do not give her yours."]]],
+  m4: [["ricochet", ["Saw your gun camera from Hale's Drift. That break you pulled on the corvette's flak? Tally used to do that. Exactly that.", "...Corinth's gone quiet. I've got family two jumps from there. Be good tomorrow, {callsign}. I mean it."]],
+       ["frost", ["...Corinth.", "When a colony goes silent, there's usually a reason. Usually it's the Vharr. Bring lifepods home first. Kills later."]]],
+  m5: [["deacon", ["Forty thousand people lived on New Corinth. The rescue teams found six hundred.", "I've been asked to hold the memorial service. I have no idea what I'm going to say. Maybe that's honest enough."]],
+       ["halo", ["Did you hear? They're saying the Pyre isn't a ship. It's a weapon that kills planets. That can't be real. Can it?", "My brother's colony is three systems from Corinth. I wrote to him. Twice. Nothing yet."]]],
+  m6: [["spark", ["Nine hundred and ninety-nine cranes. One to go. I'm saving the last one for after the strike. Superstition.", "If the strike goes badly... look after Danny. He'll pretend he's fine. He won't be."]],
+       ["ricochet", ["Big strike tomorrow. Spark leads, you're on my wing. My wing. Haven't said that since Tally.", "Hey. You've gotten good. Really good. I'm only saying it because I might not get the chance later. Don't tell anyone."]]],
+  m7: [["ricochet", ["Tally, then Spark. Everyone I fly with, the war takes.", "So here's the deal, partner. You don't die. I don't die. We get old and fat and boring and tell lies about this war in some bar on Vigil. Deal? ...Deal."]],
+       ["rabbit", ["Lodestar's a weapons platform with a skeleton crew. If the Vharr get to her, there's nobody aboard to stop them but you.", "They say the brass are building something on the far side of Vigil Station. Black hulls. Sealed crates. Don't ask me, I'm just the mechanic."]]],
+  m8: [["deacon", ["Halo's bunk is still made. Nobody's had the heart. Vesper's chair in the briefing room... they took it out. I asked them to.", "And Ember. Ember, of all people. I prayed beside him. I still don't know what he was praying for."]],
+       ["frost", ["Ember is out there.", "When you find him... don't hesitate. He won't."]]],
+  m9: [["ricochet", ["Ghul Ankoth. Vesper might be in there. We're going in first, you and me.", "Here. Tally's lighter. He'd want somebody to carry it who actually flies like him. Don't lose it, partner."]],
+       ["rabbit", ["Remember those sealed crates? Saw one open last night. Black hull, no running lights, no markings. Something with a cloak, they say.", "Officially, I didn't see it. Unofficially, whoever flies it is going to need a better mechanic than whoever built it."]]],
+  m9b: [["ricochet", ["Milk run tomorrow. Convoy hunting. I'll race you to the second hauler.", "After the war, you and me. That bar on Vigil Station with the terrible synth-whisky. I'm buying. Tally always said the first round's on the survivor."]],
+        ["frost", ["Ricochet won't stop talking about you.", "...It's good. He laughs again."]]],
+  m10: [["frost", ["The Wraith. You were chosen to fly it.", "The Graven will be at Hyperion. She killed Lantern Wing. If you get the chance... make it stop at forty-four."]],
+        ["rabbit", ["She's the only one we have. One prototype, one cloak, one set of spares I have to beg for.", "You bring her home. And you come home with her. I'm not doing paperwork for either of you."]]],
+  m11: [["deacon", ["The Pyre-Mother. I've read the intercepts. The Heir-Prince himself is riding with it.", "When we take her, we take his pride with her. Proud animals make mistakes."]],
+        ["voss", ["I've modelled Kethra's mantle for weeks. The Shear will work. That's what frightens me.", "Whatever happens tomorrow, I want you to know I didn't build it lightly."]]],
+  m12: [["deacon", ["Last one. Kethra. The whole war, one run.", "I keep thinking Danny would've had something to say about it. Something loud and wrong and perfect. ...Carry his lighter in with you. Bring it back out."]],
+        ["frost", ["When this is over, I'd like to see snow.", "You should come. ...If you want."]]],
+  l1: [["frost", ["We failed. The Vharr know where the carrier is now.", "Vigil Station is our anchor. If it falls, the Halcyon has nowhere to run. Fly well."]],
+       ["deacon", ["This is what losing feels like. You don't get to skip it.", "You do get to decide what happens next. That's the only mercy war gives."]]],
+  l2: [["ricochet", ["So this is it. Last stand at Vigil. They'll write songs about it if anyone's left to sing.", "Whatever happens, rookie, it's been an honour. ...Don't make it weird."]],
+       ["rabbit", ["Every ship I've got is fuelled and armed. Some of them are held together with tape. Fly the taped ones gently.", "If the carrier goes, you don't come back for me. Promise me that."]]],
+};
+
+// ---------------------------------------------------------------- RICOCHET ON COMMS
+// the rivalry turning into friendship, heard over the radio on the sorties you fly together
+MISSIONS.m2.navs[1].events.push({ at: "t:9", say: [["ricochet", "Stay off my left. That's... just stay off it, rookie."]] });
+MISSIONS.m2.navs[2].events.push({ at: "clear", say: [["ricochet", "Huh. Not bad. ...Tally used to take that line."]] });
+MISSIONS.m6.navs[1].events.push({ at: "t:10", say: [["ricochet", "{callsign}, you're on my wing. First time anybody's been there since Tally. Don't make it weird."]] });
+MISSIONS.m8.navs[1].events.push({ at: "t:6", say: [["ricochet", "Whatever happens with Ember, partner, I've got your six. I've always got your six."]] });
+MISSIONS.m9.navs[1].events.push({ at: "t:7", say: [["ricochet", "You hear that, {callsign}? That's the sound of the best two-ship in the fleet. Let's bring Vesper home."]] });
+MISSIONS.m9.navs[1].events.push({ at: "clear", say: [["ricochet", "Ha! You still have Tally's lighter? Good. Lucky charm's working."]] });

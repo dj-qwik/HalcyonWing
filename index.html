@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Halcyon Wing</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Barlow+Semi+Condensed:wght@400;500;600&family=Share+Tech+Mono&family=Permanent+Marker&family=Caveat:wght@600&display=swap">
+<style>
+/* Layout: full-bleed WebGL stage; DOM screens float over it as carrier-console panels. Single dark look by design. */
+:root {
+  --void: #06080b; --hull: #0f141b; --panel: rgba(16, 22, 30, .88); --line: rgba(255, 180, 64, .28);
+  --amber: #ffb440; --amber-dim: #a9783a; --steel: #93a2b4; --text: #ece4d2; --muted: #8d97a4;
+  --red: #e5492f; --blue: #63aeea; --green: #7dffa8;
+  --f-display: "Chakra Petch", "Arial Narrow", sans-serif;
+  --f-body: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-mono: "Share Tech Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--void); color: var(--text); font-family: var(--f-body); font-size: 17px; overflow: hidden; user-select: none; -webkit-user-select: none; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; }
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+.screen { position: fixed; inset: 0; z-index: 10; display: flex; padding-block: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.screen[hidden] { display: none !important; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; font-weight: 700; }
+.eyebrow { font-family: var(--f-mono); color: var(--amber); letter-spacing: .18em; text-transform: uppercase; font-size: 12px; }
+.btn { font-family: var(--f-display); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 15px; color: var(--text); background: rgba(10, 14, 20, .7); border: 1px solid var(--line); padding: 11px 18px; cursor: pointer; text-align: left; transition: background .15s, border-color .15s, color .15s; position: relative; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+.btn:hover, .btn:focus-visible, .btn.focus { background: rgba(255, 180, 64, .16); border-color: var(--amber); color: #fff; outline: none; }
+.btn.primary { background: var(--amber); color: #120c04; border-color: var(--amber); }
+.btn.primary:hover, .btn.primary:focus-visible, .btn.primary.focus { background: #ffd07a; color: #120c04; }
+.btn:disabled { opacity: .35; pointer-events: none; }
+.btn small { display: block; font-family: var(--f-body); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.panel { background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(6px); }
+.mono { font-family: var(--f-mono); }
+
+/* boot / title */
+#boot { align-items: center; justify-content: flex-end; padding-bottom: 12vh; background: linear-gradient(to bottom, rgba(0,0,0,.45), rgba(0,0,0,0) 30%, rgba(0,0,0,0) 60%, rgba(0,0,0,.65)); cursor: pointer; flex-direction: column; gap: 22px; text-align: center; }
+#boot .logo { font-family: var(--f-display); font-size: clamp(42px, 9vw, 120px); letter-spacing: .14em; line-height: .9; color: #f4ead6; text-shadow: 0 0 40px rgba(255, 170, 60, .35); }
+#boot .logo span { display: block; font-size: .32em; letter-spacing: .5em; color: var(--amber); margin-top: 14px; }
+#boot p { color: var(--muted); max-width: 46ch; margin: 0; }
+.pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35 } }
+#title { align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 24px; }
+#title .brand { align-self: flex-start; max-width: 640px; }
+#title .brand h1 { font-size: clamp(44px, 8vw, 104px); letter-spacing: .12em; line-height: .9; color: #f4ead6; text-shadow: 0 2px 30px rgba(0, 0, 0, .7); }
+#title .brand p { color: var(--steel); max-width: 52ch; line-height: 1.45; text-shadow: 0 1px 8px #000; }
+.menu { display: flex; flex-direction: column; gap: 8px; min-width: min(320px, 100%); }
+.card.optcard { width: min(940px, 100%); max-height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+.opthead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.otabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.otabs .btn { padding: 8px 12px; }
+.otabs .btn.on { border-color: var(--amber); background: rgba(255, 180, 64, .22); color: #fff; }
+.obody { overflow-y: auto; padding-right: 6px; min-height: 300px; }
+.opane { display: none; flex-direction: column; gap: 4px; }
+.opane.on { display: flex; }
+.orow { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 1.6fr); gap: 14px; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.orow > div:first-child b { display: block; font-weight: 600; }
+.orow small, .ohint { display: block; opacity: .6; font-size: 12px; line-height: 1.4; margin-top: 2px; }
+.ohint { margin: 0 0 8px; font-size: 13px; }
+.bindlist h3 { font-family: var(--f-mono); color: var(--amber); font-size: 11px; letter-spacing: .18em; margin: 14px 0 4px; font-weight: 500; }
+.brow { display: grid; grid-template-columns: minmax(150px, 1fr) 1fr 1fr; gap: 6px; align-items: center; padding: 3px 0; }
+.brow.one { grid-template-columns: minmax(150px, 1fr) 1fr 1fr; }
+.brow .btn { padding: 6px 10px; font-family: var(--f-mono); font-size: 12px; letter-spacing: .04em; text-transform: none; min-height: 32px; }
+.brow .btn.empty { opacity: .45; }
+.brow .btn.wait { border-color: var(--amber); background: rgba(255, 180, 64, .28); color: #fff; animation: bwait 0.9s ease-in-out infinite; }
+@keyframes bwait { 50% { background: rgba(255, 180, 64, .1); } }
+.ofoot { justify-content: flex-end; margin-top: 0; }
+#fpsMeter { position: fixed; top: 8px; right: 10px; z-index: 60; font-family: var(--f-mono); font-size: 12px; color: #9fe8a8; background: rgba(0, 0, 0, .45); padding: 2px 7px; border-radius: 3px; pointer-events: none; }
+@media (max-width: 640px) { .orow { grid-template-columns: 1fr; gap: 6px; } .brow { grid-template-columns: 1fr 1fr; } .brow > span { grid-column: 1 / -1; } }
+.sndcred { font-size: 11px; line-height: 1.45; opacity: .55; margin: 14px 0 4px; max-width: 46ch; }
+.credit { position: fixed; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom, 0px)); text-align: center; font-family: var(--f-display); font-weight: 500; font-size: 13px; letter-spacing: .32em; text-transform: uppercase; color: rgba(236,228,210,.88); z-index: 11; pointer-events: none; text-shadow: 0 1px 6px #000; }
+.foot { position: fixed; bottom: max(10px, env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); font-family: var(--f-mono); font-size: 12px; color: var(--muted); z-index: 11; pointer-events: none; text-align: right; }
+
+/* new pilot */
+#newpilot, #options, #controls, #pause, #kia { align-items: center; justify-content: center; background: rgba(4, 6, 9, .72); }
+.card { width: min(560px, 100%); padding: 26px; display: flex; flex-direction: column; gap: 14px; max-height: 100%; overflow: auto; box-sizing: border-box; }
+.card.wide { width: min(880px, 100%); }
+label { display: flex; flex-direction: column; gap: 6px; font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--amber); }
+input[type=text] { font-family: var(--f-display); font-size: 22px; padding: 10px 12px; background: #0a0e13; border: 1px solid var(--line); color: var(--text); }
+input[type=text]:focus { outline: none; border-color: var(--amber); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg .btn { flex: 1; text-align: center; }
+.seg .btn.on { border-color: var(--amber); background: rgba(255, 180, 64, .22); }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 28px; font-size: 15px; }
+.keys div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid rgba(255, 255, 255, .06); padding: 4px 0; }
+.keys b { font-family: var(--f-mono); color: var(--amber); font-weight: 400; text-align: right; }
+.keys h3 { grid-column: 1 / -1; font-size: 14px; letter-spacing: .14em; color: var(--steel); margin-top: 10px; }
+
+/* hub */
+#hub { gap: 18px; align-items: stretch; }
+#hub .side { width: 270px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+#hub .side .loc { padding: 14px 16px; }
+#hub .side .loc h2 { font-size: 22px; letter-spacing: .06em; }
+#hub .side .loc .mono { color: var(--muted); font-size: 12px; margin-top: 4px; }
+#hub .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+#hub .content { padding: 22px 26px; overflow: auto; flex: 1; }
+#hub .content h2 { font-size: 30px; margin-bottom: 4px; }
+#hub .content p { line-height: 1.5; max-width: 68ch; color: #d8d2c4; }
+.crew { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+.crew button { padding: 0; background: #0b0f14; border: 1px solid var(--line); cursor: pointer; color: var(--text); text-align: left; font-family: var(--f-body); }
+.crew button:hover, .crew button:focus-visible, .crew button.focus { border-color: var(--amber); outline: none; }
+.crew canvas { display: block; width: 100%; aspect-ratio: 1 / 1.05; }
+.crew .nm { padding: 8px 10px; }
+.crew .nm b { font-family: var(--f-display); display: block; font-size: 16px; }
+.crew .nm span { font-size: 13px; color: var(--muted); }
+.kb { width: 100%; border-collapse: collapse; font-size: 16px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+.kb td, .kb th { padding: 8px 10px; border-bottom: 1px solid rgba(255, 255, 255, .07); text-align: left; }
+.kb th { font-family: var(--f-mono); font-weight: 400; color: var(--amber); font-size: 12px; letter-spacing: .14em; }
+.kb td.n { text-align: right; font-family: var(--f-mono); color: var(--amber); }
+.kb tr.you td { color: #fff; background: rgba(255, 180, 64, .08); }
+.kb .kia { color: var(--red); font-family: var(--f-mono); font-size: 12px; letter-spacing: .1em; }
+.medals { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+.medal { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); background: rgba(0, 0, 0, .3); }
+.medal i { width: 26px; height: 34px; display: block; clip-path: polygon(50% 100%, 0 70%, 0 0, 100% 0, 100% 70%); }
+.ships { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+.ships.strip { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 4px; }
+.ships.strip .btn { flex: none; width: 170px; }
+.stat { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px 18px; margin-top: 12px; font-family: var(--f-mono); font-size: 13px; }
+.stat div { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, .06); padding: 3px 0; }
+.stat b { color: var(--amber); font-weight: 400; }
+.log { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.log div { border-left: 2px solid var(--amber-dim); padding: 4px 12px; }
+.log b { font-family: var(--f-display); }
+.log .ok { color: var(--green); } .log .no { color: var(--red); }
+
+/* briefing */
+#brief { gap: 18px; }
+#brief .left { flex: 1.2; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+#brief .right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+#brief .head { padding: 16px 20px; }
+#brief .head h2 { font-size: clamp(26px, 3.4vw, 40px); }
+#briefMap { width: 100%; flex: 1; min-height: 200px; display: block; }
+#brief .speaker { display: flex; gap: 14px; padding: 14px; }
+#brief .speaker canvas { width: 150px; height: 160px; flex: none; }
+#brief .speaker .txt { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+#brief .speaker .who { font-family: var(--f-display); color: var(--amber); }
+#brief .speaker .line { font-size: 18px; line-height: 1.45; }
+#brief ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.6; }
+#brief .flightinfo { padding: 14px 18px; }
+#brief .flightinfo .row { gap: 18px; }
+
+/* cinematic */
+#cine { z-index: 20; flex-direction: column; justify-content: space-between; padding: 0; pointer-events: auto; }
+#cine .bar { height: 11vh; background: #000; flex: none; display: flex; align-items: center; justify-content: center; }
+#cine .cap { font-family: var(--f-mono); color: var(--amber); letter-spacing: .2em; text-transform: uppercase; font-size: clamp(12px, 1.6vw, 16px); text-align: center; padding: 0 16px; }
+#cine .ttl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--f-display); font-size: clamp(48px, 10vw, 140px); letter-spacing: .16em; color: #f4ead6; text-shadow: 0 0 60px rgba(255, 160, 60, .5); pointer-events: none; text-align: center; opacity: 0; transition: opacity 1.4s; }
+#cine .ttl.show { opacity: 1; }
+#cine .sub { position: absolute; left: 50%; bottom: 14vh; transform: translateX(-50%); width: min(900px, calc(100% - 32px)); text-align: center; font-size: clamp(16px, 2vw, 22px); line-height: 1.4; text-shadow: 0 2px 6px #000, 0 0 20px #000; }
+#cine .sub b { font-family: var(--f-display); color: var(--amber); letter-spacing: .06em; }
+#cine .talk { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(980px, calc(100% - 32px)); display: flex; gap: 22px; align-items: stretch; }
+#cine .talk canvas { width: min(360px, 40vw); aspect-ratio: 0.92; flex: none; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+#cine .talk .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 18px 20px; }
+#cine .talk .tt .nm { font-family: var(--f-display); font-size: clamp(22px, 2.6vw, 32px); }
+#cine .talk .tt .rk { font-family: var(--f-mono); color: var(--amber); letter-spacing: .12em; font-size: 12px; text-transform: uppercase; }
+#cine .talk .tt .ln { font-size: clamp(17px, 1.9vw, 22px); line-height: 1.5; min-height: 4.5em; }
+#cine .talk .tt .more { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+#cine .choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+#cine .skip { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(11vh + 10px); font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+#cine .medalbig { width: 120px; height: 160px; flex: none; }
+#cine .static { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: .18; }
+
+/* debrief + ending */
+#debrief { align-items: center; justify-content: center; background: rgba(4, 6, 9, .8); }
+#debrief .res { font-size: clamp(30px, 5vw, 54px); letter-spacing: .08em; }
+#debrief .res.ok { color: var(--green); } #debrief .res.no { color: var(--red); }
+.obj { display: flex; flex-direction: column; gap: 4px; font-size: 17px; }
+.obj div { display: flex; gap: 10px; }
+.obj .m { font-family: var(--f-mono); width: 20px; flex: none; }
+#ending { align-items: center; justify-content: center; background: #000; flex-direction: column; text-align: center; gap: 22px; z-index: 25; }
+#ending h1 { font-size: clamp(32px, 6vw, 72px); letter-spacing: .14em; color: #f4ead6; }
+#ending .roll { max-width: 62ch; display: flex; flex-direction: column; gap: 16px; font-size: clamp(17px, 2vw, 21px); line-height: 1.55; color: #d6cebd; }
+#ending .roll p { margin: 0; opacity: 0; transform: translateY(8px); transition: opacity 2s, transform 2s; }
+#ending .roll p.in { opacity: 1; transform: none; }
+#toast { position: fixed; top: max(16px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; font-family: var(--f-mono); color: var(--amber); background: rgba(0, 0, 0, .7); border: 1px solid var(--line); padding: 8px 14px; font-size: 13px; }
+
+
+/* immersive hub */
+#hub { padding: 0; display: block; pointer-events: none; }
+#hub > * { pointer-events: auto; }
+.hubchip { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); top: max(16px, env(safe-area-inset-top, 0px)); padding: 10px 16px 12px; background: linear-gradient(90deg, rgba(6,8,11,.82), rgba(6,8,11,0)); border-left: 3px solid var(--amber); min-width: 260px; }
+.hubchip h2 { font-size: 26px; letter-spacing: .05em; text-shadow: 0 2px 10px #000; }
+.hubchip .mono { color: var(--steel); font-size: 12px; margin-top: 2px; }
+#hotspots { position: absolute; inset: 0; pointer-events: none; }
+.hs { position: absolute; left: 0; top: 0; pointer-events: auto; transform: translate(-50%, -100%); padding: 6px 12px 7px; font-size: 13px; text-align: center; white-space: nowrap; background: rgba(8,10,14,.72); clip-path: none; border-radius: 2px; transition: opacity .25s, background .15s; }
+.hs::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 18px; background: rgba(255,180,64,.6); }
+.hs small { font-size: 11px; color: var(--amber); letter-spacing: .12em; text-transform: uppercase; }
+.hs.door { border-color: rgba(96,176,255,.6); }
+.hs.hidden { opacity: 0; pointer-events: none; }
+.hubcorner { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: max(16px, env(safe-area-inset-top, 0px)); display: flex; gap: 6px; }
+.btn.sm { font-size: 12px; padding: 7px 12px; }
+.talkbar, .choicebox { position: absolute; left: 50%; bottom: max(26px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(980px, calc(100% - 32px)); box-sizing: border-box; padding: 16px 22px 14px; background: linear-gradient(180deg, rgba(5,7,10,.78), rgba(5,7,10,.92)); border-top: 2px solid var(--amber); }
+.tbname, .cq { font-family: var(--f-display); color: var(--amber); letter-spacing: .08em; text-transform: uppercase; font-size: 15px; margin-bottom: 4px; }
+.tbline { font-size: clamp(17px, 1.9vw, 21px); line-height: 1.45; }
+.tbhint { font-family: var(--f-mono); font-size: 11px; color: var(--muted); margin-top: 8px; text-align: right; }
+.hubpanel { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: 70px; bottom: 20px; width: min(520px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box; }
+.hubpanel .content { overflow: auto; flex: 1; }
+.hubpanel h2 { font-size: 26px; } .hubpanel p { line-height: 1.5; color: #d8d2c4; }
+#cine .choicebox { bottom: calc(11vh + 14px); z-index: 3; }
+#cine .choicebox .choices { display: flex; flex-direction: column; gap: 6px; }
+#cMedal { position: absolute; right: 6vw; top: calc(11vh + 20px); width: 120px; height: 160px; filter: drop-shadow(0 6px 18px rgba(0,0,0,.7)); }
+#cine .sub { bottom: calc(11vh + 18px); }
+
+@media (max-width: 760px) {
+  body { font-size: 15px; }
+  #hub { flex-direction: column; overflow: auto; }
+  #hub .side { width: 100%; flex-direction: row; flex-wrap: wrap; }
+  #hub .side .btn { flex: 1 1 140px; }
+  #hub .side .loc { flex: 1 1 100%; }
+  #brief { flex-direction: column; overflow: auto; }
+  #cine .talk { flex-direction: column; align-items: center; }
+  #cine .talk canvas { width: min(240px, 60vw); }
+}
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } #ending .roll p { transition: none; } }
+</style>
+
+<div id="stage"></div>
+
+<section id="boot" class="screen">
+  <div class="logo">HALCYON<span>WING</span></div>
+    <div class="eyebrow pulse" id="bootHint">Click or press any button to begin</div>
+</section>
+
+<section id="title" class="screen" hidden>
+  <div class="brand">
+    <div class="eyebrow">Calder's Reach · 2711</div>
+    <h1>HALCYON<br>WING</h1>
+    <p>Twenty-six years of war with the Vharr Hegemony. One old strike carrier. One squadron of veterans who have buried too many friends. And you, fresh from the Academy.</p>
+  </div>
+  <div class="menu panel" style="padding:14px">
+    <button class="btn primary" id="bNew">New Campaign<small>Enlist as a rookie pilot aboard the CNS Halcyon</small></button>
+    <button class="btn" id="bCont">Continue<small id="contInfo">No saved campaign</small></button>
+    <button class="btn" id="bSim">Flight Simulator<small>Practice sorties, custom battles, endless waves</small></button>
+    <button class="btn" id="bCtl">Controls</button>
+    <button class="btn" id="bOpt">Options</button>
+    <button class="btn" id="bFull">Fullscreen</button>
+  </div>
+</section>
+
+<section id="newpilot" class="screen" hidden>
+  <div class="card panel">
+    <div class="eyebrow">Concord Navy · Personnel Form 7-C</div>
+    <h2>Pilot Enlistment</h2>
+    <label for="inName">Full name<input type="text" id="inName" maxlength="24" value="Alex Mercer"></label>
+    <label for="inCall">Call sign<input type="text" id="inCall" maxlength="14" value="Maverick"></label>
+    <div class="eyebrow" style="margin-top:6px">Difficulty</div>
+    <div class="seg" id="diffSeg">
+      <button class="btn" data-d="0.6">Rookie</button><button class="btn on" data-d="1">Veteran</button><button class="btn" data-d="1.4">Ace</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="npBack">Back</button>
+      <button class="btn primary" id="npGo">Report for duty</button>
+    </div>
+  </div>
+</section>
+
+<section id="hub" class="screen" hidden>
+  <div class="hubchip"><div class="eyebrow">CNS Halcyon</div><h2 id="hubLoc">Officers' Lounge</h2><div class="mono" id="hubWho"></div></div>
+  <div id="hotspots"></div>
+  <div class="hubcorner"><button class="btn sm" id="hLog">Log</button><button class="btn sm" id="hOpt">Options</button><button class="btn sm" id="hQuit">Save &amp; Quit</button></div>
+  <div class="talkbar" id="talkbar" hidden><div class="tbname" id="tbName"></div><div class="tbline" id="tbLine"></div><div class="tbhint" id="tbHint">Click or Ⓐ to continue</div></div>
+  <div class="panel hubpanel" id="hubPanel" hidden><div class="content" id="hubContent"></div><button class="btn" id="hpClose">Close</button></div>
+</section>
+
+<section id="brief" class="screen" hidden>
+  <div class="left">
+    <div class="head panel"><div class="eyebrow" id="brSys"></div><h2 id="brTitle"></h2></div>
+    <div class="panel" style="flex:1;display:flex;min-height:200px"><canvas id="briefMap"></canvas></div>
+  </div>
+  <div class="right">
+    <div class="speaker panel"><canvas id="brFace" width="300" height="320"></canvas><div class="txt"><div class="who" id="brWho"></div><div class="line" id="brLine"></div><div class="eyebrow" id="brStep" style="color:var(--muted)"></div></div></div>
+    <div class="flightinfo panel">
+      <div class="eyebrow">Objectives</div><ul id="brObj"></ul>
+      <div class="row" style="margin-top:10px"><div><div class="eyebrow">Your ship</div><div id="brShip"></div></div><div><div class="eyebrow">Wingmen</div><div id="brWing"></div></div></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="brBack">Back</button>
+      <button class="btn" id="brNext">Next ▶</button>
+      <button class="btn primary" id="brLaunch">Launch</button>
+    </div>
+  </div>
+</section>
+
+<section id="cine" class="screen" hidden>
+  <div class="bar"><div class="cap" id="cCapTop"></div></div>
+  <div class="ttl" id="cTitle"></div>
+  <canvas class="static" id="cStatic" hidden></canvas>
+  <div class="talk" id="cTalk" hidden>
+    <canvas id="cFace" width="460" height="500"></canvas>
+    <div class="tt panel"><div class="rk" id="cRank"></div><div class="nm" id="cName"></div><div class="ln" id="cLine"></div><div class="choices" id="cChoices"></div><div class="more" id="cMore">Click, Enter or Ⓐ to continue</div></div>
+  </div>
+  <div class="sub" id="cSub"></div>
+  <div class="choicebox" id="cChoiceBox" hidden><div class="cq" id="cQ"></div><div class="choices" id="cChoices2"></div></div>
+  <canvas id="cMedal" width="240" height="320" hidden></canvas>
+  <div class="skip">Esc / Ⓑ to skip</div>
+  <div class="bar"><div class="cap" id="cCap"></div></div>
+</section>
+
+<section id="debrief" class="screen" hidden>
+  <div class="card panel wide">
+    <div class="eyebrow" id="dbSys"></div>
+    <h2 class="res" id="dbRes"></h2>
+    <div class="obj" id="dbObj"></div>
+    <div class="stat" id="dbStat"></div>
+    <p id="dbNote" style="color:var(--steel);line-height:1.5;margin:4px 0 0"></p>
+    <div class="row"><button class="btn primary" id="dbGo">Continue</button></div>
+  </div>
+</section>
+
+<section id="kia" class="screen" hidden>
+  <div class="card panel">
+    <div class="eyebrow">Casualty report</div>
+    <h2 style="color:var(--red);font-size:40px">Killed in Action</h2>
+    <p id="kiaTxt" style="line-height:1.5;color:var(--steel)"></p>
+    <div class="row"><button class="btn" id="kiaQuit">Title screen</button><button class="btn primary" id="kiaRetry">Fly it again</button></div>
+  </div>
+</section>
+
+<section id="pause" class="screen" hidden>
+  <div class="card panel">
+    <div class="eyebrow">Paused</div>
+    <h2 id="pauseTitle">Mission</h2>
+    <div class="obj" id="pauseObj"></div>
+    <button class="btn primary" id="pResume">Resume</button>
+    <button class="btn" id="pCtl">Controls</button>
+    <button class="btn" id="pOpt">Options</button>
+    <button class="btn" id="pFull">Fullscreen</button>
+    <button class="btn" id="pAbort">Abort mission</button>
+  </div>
+</section>
+
+<section id="options" class="screen" hidden>
+  <div class="card panel optcard">
+    <div class="opthead"><div><div class="eyebrow">Barracks</div><h2>Options</h2></div>
+      <div class="otabs" id="oTabs"><button class="btn" data-t="video">Video</button><button class="btn" data-t="audio">Audio</button><button class="btn" data-t="controls">Controls</button><button class="btn" data-t="keys">Keyboard</button><button class="btn" data-t="pad">Controller</button><button class="btn" data-t="game">Gameplay</button></div></div>
+    <div class="obody">
+    <div class="opane" data-p="video">
+      <div class="orow"><div><b>Graphics quality</b><small>Resolution scale, anti-aliasing and texture detail. Lower it if the game stutters.</small></div><div class="seg" id="oQual"><button class="btn" data-v="low">Low</button><button class="btn" data-v="medium">Medium</button><button class="btn" data-v="high">High</button><button class="btn" data-v="ultra">Ultra</button></div></div>
+      <div class="orow"><div><b>Field of view</b><small>How wide the cockpit view is in flight.</small></div><div class="seg" id="oFov"><button class="btn" data-v="60">60&deg;</button><button class="btn" data-v="72">72&deg;</button><button class="btn" data-v="85">85&deg;</button><button class="btn" data-v="95">95&deg;</button></div></div>
+      <div class="orow"><div><b>Brightness</b></div><div class="seg" id="oBright"><button class="btn" data-v="0.85">Dim</button><button class="btn" data-v="1">Normal</button><button class="btn" data-v="1.15">Bright</button><button class="btn" data-v="1.3">Brighter</button></div></div>
+      <div class="orow"><div><b>Bloom and glow</b></div><div class="seg" id="oBloom"><button class="btn" data-v="0">Off</button><button class="btn" data-v="0.6">Low</button><button class="btn" data-v="1">Medium</button><button class="btn" data-v="1.4">High</button></div></div>
+      <div class="orow"><div><b>Camera shake</b></div><div class="seg" id="oShake"><button class="btn" data-v="0">Off</button><button class="btn" data-v="0.5">Reduced</button><button class="btn" data-v="1">Full</button></div></div>
+      <div class="orow"><div><b>FPS counter</b></div><div class="seg" id="oFps"><button class="btn" data-v="0">Off</button><button class="btn" data-v="1">On</button></div></div>
+      <div class="orow"><div><b>Fullscreen</b><small>Also on F8.</small></div><div class="seg"><button class="btn" id="oFull">Toggle fullscreen</button></div></div>
+    </div>
+    <div class="opane" data-p="audio">
+      <div class="orow"><div><b>Master volume</b></div><div class="seg" id="oMaster"><button class="btn" data-v="0">Off</button><button class="btn" data-v="0.25">25%</button><button class="btn" data-v="0.5">50%</button><button class="btn" data-v="0.75">75%</button><button class="btn" data-v="1">100%</button></div></div>
+      <div class="orow"><div><b>Music</b></div><div class="seg" id="oMus"><button class="btn" data-v="0">Off</button><button class="btn" data-v="0.15">25%</button><button class="btn" data-v="0.3">50%</button><button class="btn" data-v="0.45">75%</button><button class="btn" data-v="0.6">100%</button></div></div>
+      <div class="orow"><div><b>Sound effects</b></div><div class="seg" id="oSfx"><button class="btn" data-v="0">Off</button><button class="btn" data-v="0.3">25%</button><button class="btn" data-v="0.55">50%</button><button class="btn" data-v="0.8">75%</button><button class="btn" data-v="1.1">100%</button></div></div>
+      <div class="orow"><div><b>Character voices</b><small>Spoken dialogue uses your browser's speech voices.</small></div><div class="seg" id="oVoice"><button class="btn" data-v="1">On</button><button class="btn" data-v="0">Off</button></div></div>
+      <div class="orow"><div><b>Voice volume</b></div><div class="seg" id="oVVol"><button class="btn" data-v="0.4">Low</button><button class="btn" data-v="0.7">Medium</button><button class="btn" data-v="1">High</button></div></div>
+      <p class="sndcred">Sound effects: Kenney, Nenad Simi&#263;, Black Lodge Games, Little Robot Sound Factory, JC Sounds, dklon, qubodup and Lamoot, via kenney.nl and OpenGameArt.org (CC0 / CC-BY). Full credits in assets/sfx/CREDITS.txt.<br>Music: leohpaz, Matthew Pablo, Jonathan Shaw (www.jshaw.co.uk), Emma_MA, cynicmusic and RandomMind, via OpenGameArt.org (CC-BY / CC0). Full credits in assets/music/CREDITS.txt.</p>
+    </div>
+    <div class="opane" data-p="controls">
+      <div class="orow"><div><b>Mouse sensitivity</b></div><div class="seg" id="oSens"><button class="btn" data-v="0.4">Lowest</button><button class="btn" data-v="0.6">Low</button><button class="btn" data-v="1">Medium</button><button class="btn" data-v="1.3">High</button><button class="btn" data-v="1.6">Highest</button></div></div>
+      <div class="orow"><div><b>Mouse pitch</b></div><div class="seg" id="oMInv"><button class="btn" data-v="0">Mouse up = nose up</button><button class="btn" data-v="1">Inverted</button></div></div>
+      <div class="orow"><div><b>Stick and arrow-key pitch</b></div><div class="seg" id="oInv"><button class="btn" data-v="0">Push forward = nose down</button><button class="btn" data-v="1">Inverted</button></div></div>
+      <div class="orow"><div><b>Stick dead zone</b><small>Raise it if your ship drifts with the sticks centred.</small></div><div class="seg" id="oDead"><button class="btn" data-v="0.08">Tight</button><button class="btn" data-v="0.14">Default</button><button class="btn" data-v="0.22">Loose</button><button class="btn" data-v="0.3">Very loose</button></div></div>
+      <div class="orow"><div><b>Controller vibration</b></div><div class="seg" id="oVib"><button class="btn" data-v="1">On</button><button class="btn" data-v="0">Off</button></div></div>
+    </div>
+    <div class="opane" data-p="keys">
+      <p class="ohint">Select a slot, then press the new key or mouse button. <b>Esc</b> cancels, <b>Delete</b> clears the slot. A key that's already in use moves to the new action.</p>
+      <div id="oKeys" class="bindlist"></div>
+      <div class="row"><button class="btn" id="oKeysReset">Reset keyboard to defaults</button></div>
+    </div>
+    <div class="opane" data-p="pad">
+      <p class="ohint">Select a slot, then press the controller button. Hold one button while pressing another to bind a combo. Sticks: select an axis slot and move the stick you want. <span id="oPadName"></span></p>
+      <div id="oPad" class="bindlist"></div>
+      <div class="row"><button class="btn" id="oPadReset">Reset controller to defaults</button></div>
+    </div>
+    <div class="opane" data-p="game">
+      <div class="orow"><div><b>Difficulty</b><small>Enemy toughness, accuracy and aggression. Applies to your current campaign.</small></div><div class="seg" id="oDiff"><button class="btn" data-v="0.6">Rookie</button><button class="btn" data-v="1">Veteran</button><button class="btn" data-v="1.4">Ace</button></div></div>
+      <div class="orow"><div><b>Pause when the window loses focus</b></div><div class="seg" id="oAutoP"><button class="btn" data-v="1">On</button><button class="btn" data-v="0">Off</button></div></div>
+      <div class="orow"><div><b>Restore defaults</b><small>Resets every option and both control layouts.</small></div><div class="seg"><button class="btn" id="oAllReset">Reset everything</button></div></div>
+    </div>
+    </div>
+    <div class="row ofoot"><button class="btn primary" id="oBack">Done</button></div>
+  </div>
+</section>
+
+<div id="fpsMeter" hidden></div>
+
+<section id="controls" class="screen" hidden>
+  <div class="card panel wide">
+    <div class="eyebrow">Pilot's operating handbook</div><h2>Controls</h2>
+    <div class="keys">
+      <h3>FLIGHT</h3>
+      <div>Pitch / yaw<b>Mouse · Arrows · Left stick</b></div>
+      <div>Roll<b>A / D · Right stick ↔</b></div>
+      <div>Throttle up / down<b>W / S · D-pad ↑↓ · Right stick ↕</b></div>
+      <div>Afterburner<b>Tab · LT</b></div>
+      <div>Afterburner slide (drift)<b>Shift · LB</b></div>
+      <div>Full stop<b>Backspace</b></div>
+      <div>Match target speed<b>B · R3</b></div>
+      <div>Cloak (Wraith only)<b>K · L3</b></div>
+      <h3>COMBAT</h3>
+      <div>Fire guns<b>Space · Left click · RT</b></div>
+      <div>Fire missile / torpedo<b>F · Enter · Right click · RB</b></div>
+      <div>Cycle missiles<b>M · X button</b></div>
+      <div>Guns full / sequence<b>G</b></div>
+      <div>Drop decoy<b>X · B button</b></div>
+      <div>Nearest enemy<b>R · A button</b></div>
+      <div>Cycle targets<b>T / Y · D-pad ←→</b></div>
+      <h3>COMMAND</h3>
+      <div>Wingman comms<b>C, then 1–6 · Y button, then D-pad</b></div>
+      <div>Autopilot / land<b>N · View button</b></div>
+      <div>Request landing<b>L</b></div>
+      <div>Chase / cockpit view<b>V</b></div>
+      <div>Look behind<b>Hold Z</b></div>
+      <div>Eject<b>Ctrl+E · View + B</b></div>
+      <div>Pause<b>Esc · P · Menu button</b></div>
+      <div>Fullscreen<b>F8</b></div>
+    </div>
+    <p style="color:var(--steel);line-height:1.5;margin:6px 0 0">Click the screen in flight to capture the mouse; the mouse then works like a joystick. Heat seekers need you behind the target. Image recognition missiles lock from any angle. Torpedoes need a five-second lock on a capital ship. Knock out a capital ship's shield generator and your guns will start to hurt it.</p>
+    <button class="btn primary" id="cBack">Done</button>
+  </div>
+</section>
+
+<section id="ending" class="screen" hidden>
+  <h1 id="endTitle"></h1>
+  <div class="roll" id="endRoll"></div>
+  <button class="btn primary" id="endGo" hidden>Return to title</button>
+</section>
+
+<div id="toast" hidden></div>
+<div class="foot" id="foot"></div>
+<div class="credit" id="credit">2026 Monkey Business Software</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="./ui.js"></script>

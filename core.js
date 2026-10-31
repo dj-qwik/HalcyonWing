@@ -646,7 +646,7 @@ export function startMission(mission, camp, onEnd) {
   C.escorts = (mission.escort || []).map((e, i) => { const s = new Ship(e.type, "concord", { id: e.id, name: e.name }); s.escort = true; s.keep = true; s.slot = i; return addShip(s); });
   C.navIdx = 0; C.result = null; C.dead = false; C.view = "cockpit"; C.comms = []; C.curComm = null; C.msgs = []; C.finaleT = undefined; C.carrierLostT = 0; C.sparkDone = false; C.ghost = null; C.scriptHold = false; C.commsOpen = false; C.dyingCaps = []; C.debris = []; C.t = 0;
   loadNav(0, true);
-  C.state = "launch"; C.stateT = 0; C.paused = false;
+  C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1;   // fade in, so the frames before the cockpit camera settles in the tube never show
   sfx.play("tense");
 }
 
@@ -657,6 +657,7 @@ function navEnv(nav) {
   return env;
 }
 function loadNav(i, first) {
+  C._nagT = 8; if (first) C._nagged = false;   // autopilot reminder: a few seconds after arriving at each nav
   const ms = C.mission, nav = ms.navs[i];
   clearWorld(true);
   C.navIdx = i; C.navT = 0; C.fired = new Set(); C.cleared = false; C.flak = 0;
@@ -1373,6 +1374,17 @@ function doComms(n) {
   if (n === 5) { const T = C.target; if (T && T.team === "vharr" && !T.isCap) { T.ai.tgt = C.player; T.ai.retarget = 15; C.comms.push({ who: "player", text: pick(["You fly like a wounded grazer, Vharr.", "Is that the best the Hegemony has?", "I've seen better hunting from a house cat."]) }); C.comms.push({ who: T.pilot || "vharrpilot", text: pick(["Your throat will be mine, human!", "I will wear your name!", "Insolent prey!"]) }); } }
   if (n === 6) tryLanding(true);
 }
+function boundKey(id) { const c = (binds.kb[id] || []).find(Boolean); if (!c) return "?"; return c.replace(/^Ctrl\+/, "Ctrl+").replace(/^Key/, "").replace(/^Digit/, "").replace(/^Numpad/, "Num "); }
+// tell the player how to move on: the mission advances by autopilot, which isn't obvious to a newcomer
+function autoNag(dt) {
+  const ms = C.mission, nav = ms.navs[C.navIdx], next = ms.navs[C.navIdx + 1];
+  if (!next || nav.home || ms.defend || C.scriptHold) return;
+  C._nagT = (C._nagT ?? 4) - dt;
+  if (C._nagT > 0 || !autoAvailable()) return;
+  const first = !C._nagged; C._nagged = true; C._nagT = 30;
+  C.msgs.push({ t: 5, text: `PRESS ${boundKey("auto")} — AUTOPILOT TO ${next.name.toUpperCase()}` });
+  if (first) { const w = (C.wing || []).find(x => x.alive && x.pilot); C.comms.push({ who: w ? w.pilot : "comms", text: `Area's clear. Hit autopilot and we'll jump to ${next.name}.` }); }
+}
 function autoAvailable() {
   if (C.scriptHold) return false;
   const hs = hostiles("concord", 7000).filter(e => !e.isCap || e.pos.distanceTo(C.player.pos) < 2500);
@@ -1442,7 +1454,7 @@ function stepFlight(dt) {
   if (C.state === "ended") return;
   for (const e of C.ents) { if (!e.alive || e.isPlayer) continue; if (e.comp) { e.update(); continue; } if (e.isCap) aiCapital(e, dt); else if (C.state === "flight") aiFighter(e, dt); }
   if (C.state === "flight") {
-    runEvents(dt);
+    runEvents(dt); autoNag(dt);
     if (ms.script === "ghost") ghostTick(dt);
     updBolts(dt); updMissiles(dt); updDecoys(dt); updDebris(dt);
     // nav cleared tracking
@@ -1629,7 +1641,8 @@ function drawHUD(flight) {
     const kps = v => Math.round(v / K);
     x.textAlign = "left"; x.fillStyle = AMBER; x.font = "600 15px 'Share Tech Mono', monospace";
     x.textAlign = "right"; x.fillText(`${C.mission.navs[C.navIdx].name.toUpperCase()}`, W - 24, 30);
-    if (nav.home || C.mission.defend) { x.fillStyle = GREEN; x.fillText("[N] LAND", W - 24, 50); }
+    if (nav.home || C.mission.defend) { x.fillStyle = GREEN; x.fillText(`[${boundKey("auto")}] LAND`, W - 24, 50); }
+    else if (C.mission.navs[C.navIdx + 1] && C.state === "flight") { const ok = autoAvailable(); x.fillStyle = ok ? GREEN : "rgba(255,180,64,.55)"; x.fillText(ok ? `[${boundKey("auto")}] AUTOPILOT → ${C.mission.navs[C.navIdx + 1].name.toUpperCase()}` : "AUTOPILOT LOCKED — HOSTILES", W - 24, 50); }
     if (pl.cloaked) { x.fillStyle = CYAN; x.textAlign = "center"; x.fillText("◈ CLOAKED ◈", W / 2, 34); }
     // energy & fuel bars
     // warnings

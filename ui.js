@@ -131,7 +131,7 @@ function lounge() {
 function interior(red) {
   baseStage({ hue: red ? 0.0 : 0.6 }); C.indoor = true;
   const R = ROOMS.buildHangar(C.world, !!red);
-  return ["lancer", "kestrel", "lancer", "warden"].map((t, i) => { const p = R.pads[i + 1]; return put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < 0 ? -0.5 : 0.5), 0]); });
+  return ["lancer", "kestrel", "lancer", "warden"].map((t, i) => { const p = R.pads[i + 1]; return put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); });
 }
 const STAGES = {
   title() {
@@ -468,10 +468,10 @@ Object.assign(STAGES, {
   hangarRoom() {
     baseStage({ ...hubEnv(), fov: 50 }); C.sun.intensity = 0.4; C.fill.intensity = 0.2;
     const R = ROOMS.buildHangar(C.world, false); C.indoor = true;
-    const types = ["kestrel", "lancer", "warden", "longbow", "wraith"]; const ships = [];
-    types.forEach((t, i) => { const p = R.pads[i]; const s = put(t, [p[0], 2.2, p[2]], [0, Math.PI + (i ? (p[0] < 0 ? -0.5 : 0.5) : 0), 0]); ships.push({ t, s }); });
+    const types = ["kestrel", "lancer", "warden", "wraith", "longbow"]; const ships = [];
+    types.forEach((t, i) => { const p = R.pads[i]; const s = put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); ships.push({ t, s }); });   // nose to the camera, a slight splay
     const deck = place("rabbit", [4.5, 0, -6], -0.6, "armsCrossed");
-    const home = { pos: new V3(0, 6, 24), look: new V3(0, 3, -10) }; const cam = camRig(home.pos, home.look);
+    const home = { pos: new V3(0, 10, 26), look: new V3(0, 2, -14) }; const cam = camRig(home.pos, home.look);
     const st = { cam, home };
     setHotspots([...ships.map(({ t, s }) => ({ label: SHIPS[t].name, sub: SHIPS[t].cls, pos: () => s.obj.position.clone().add(new V3(0, 4.5, 0)), act: () => { const p = s.obj.position; st.cam.go(p.clone().add(new V3(9, 4, 11)), p.clone().add(new V3(-2, 0.5, 0)), 2); st.focus = true; hubPanel("ship", t); } })),
       { label: "Lounge", sub: "Back", door: 1, pos: new V3(-6, 3, 20), act: () => { $("hubPanel").hidden = true; toHub(); } }]);
@@ -537,13 +537,15 @@ Object.assign(STAGES, {
     const myType = ms.ship, wingType = ms.ship === "wraith" ? "warden" : ms.ship;
     const mine = put(myType, [0, 2.2, -12], [0, 0, 0]);
     mine.obj.traverse(o => { if (o.isMesh && o.material && o.material.map === M.tex().glass) o.visible = false; });
-    const can = ROOMS.makeCanopy(myType); mine.obj.add(can); can.rotation.x = -1.15;
-    const others = (ms.wing || []).map((w, i) => ({ w, s: put(wingType, [i % 2 ? 14 : -14, 2.2, -6 - Math.floor(i / 2) * 20], [0, i % 2 ? -0.35 : 0.35, 0]) }));
+    const can = ROOMS.makeCanopy(myType); mine.obj.add(can); can.rotation.x = 1.15;   // hinged at the rear: open = front lifted up
+    const wsz = new THREE.Box3().setFromObject(M.buildShip(wingType).obj).getSize(new V3());   // measure, then park with clearance
+    const others = (ms.wing || []).map((w, i) => ({ w, s: put(wingType, [(i % 2 ? 1 : -1) * (wsz.x + 4) * (1 + Math.floor(i / 2) * 0.5), 2.2, -6 - Math.floor(i / 2) * (wsz.z + 6)], [0, i % 2 ? -0.12 : 0.12, 0]) }));
     const runners = [];
-    const me = place("player", [3, 0, 18], Math.PI, "run"); if (me) runners.push({ f: me, from: new V3(3, 0, 18), to: new V3(2.4, 0, -9), me: 1 });
+    // the player is already strapped in, canopy up; the wingmen sprint to their fighters across the deck
+    const me = place("player", [0, 0, 0], Math.PI, "sitBack");
     others.forEach(({ w, s }, i) => { const f = place(w, [i % 2 ? 9 : -6, 0, 20], Math.PI, "run"); if (f) runners.push({ f, from: f.position.clone(), to: s.obj.position.clone().setY(0).add(new V3(i % 2 ? -3 : 3, 0, 3)) }); });
     const crew = place("rabbit", [-4, 0, -4], 0.6, "point");
-    const seat = can.userData.seat; let seated = false;
+    const seat = can.userData.seat; let seated = true; if (me) { mine.obj.add(me); me.position.copy(seat); me.rotation.set(0, Math.PI, 0); }
     const cam = camRig(new V3(-16, 12, 26), new V3(0, 2, -6)); const st = { cam };
     const glowL = new THREE.PointLight(0x7dffa8, 0, 4, 2); mine.obj.add(glowL); glowL.position.set(seat.x, seat.y + 1.2, seat.z - 0.6);
     Object.assign(st, { update(t, dt) {
@@ -556,13 +558,13 @@ Object.assign(STAGES, {
         if (k >= 1) { r.done = true; if (r.me) { setPose(r.f, "sitBack"); mine.obj.add(r.f); r.f.position.copy(seat); r.f.rotation.set(0, Math.PI, 0); seated = true; } else r.f.visible = false; }
       }
       if (crew) updateFigure(crew, t, dt, 0, C.camera, 0);
-      if (t > 4.4) can.rotation.x = Math.min(0, -1.15 + (t - 4.4) * 0.7);
+      if (t > 4.4) can.rotation.x = Math.max(0, 1.15 - (t - 4.4) * 0.7);   // swings down onto the cockpit
       glowL.intensity = t > 5.8 ? Math.min(6, (t - 5.8) * 4) : 0;
       const eng = t > 6.5 ? Math.min(1.4, (t - 6.5) * 0.9) : 0.05; glowEngines(mine, eng); others.forEach(o => glowEngines(o.s, eng));
       // camera choreography
       const P = mine.obj.position;
-      if (t < 1.8) cam.go(new V3(-14, 10, 22), new V3(2, 2, 4), 0.8);
-      else if (t < 4.2) { if (!st.c2) { st.c2 = 1; const m = runners[0]?.f.position || new V3(); cam.cut(m.clone().add(new V3(-3.2, 1.5, 3.2)), m.clone().add(new V3(0, 1.4, 0))); } const m = runners[0]?.f.position; if (m) cam.go(m.clone().add(new V3(-3.0, 1.4, 3.6)), m.clone().add(new V3(0, 1.3, -1)), 4); }
+      // wide crane across the deck: klaxons, the deck chief waving, wingmen sprinting to their fighters in the distance
+      if (t < 4.2) cam.go(new V3(-16 + t * 2.2, 11 - t * 0.9, 24 - t * 1.6), new V3(t * 0.4, 2.2, -8), 1.2);
       else if (t < 6.8) { if (!st.c3) { st.c3 = 1; cam.cut(P.clone().add(new V3(6.5, seat.y + 5.0, seat.z + 4.5)), P.clone().add(new V3(seat.x, seat.y + 1.0, seat.z))); } cam.go(P.clone().add(new V3(5.2, seat.y + 4.2, seat.z + 3.2)), P.clone().add(new V3(0, seat.y + 1.0, seat.z)), 0.4); }
       else { if (!st.c4) { st.c4 = 1; cam.cut(P.clone().add(new V3(0.6, seat.y + 2.0, seat.z - 4.5)), P.clone().add(new V3(0, seat.y + 1.1, seat.z))); } cam.go(P.clone().add(new V3(0.15, seat.y + 1.55, seat.z - 2.3)), P.clone().add(new V3(0, seat.y + 1.1, seat.z)), 0.6); }
       cam.update(dt);

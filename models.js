@@ -380,7 +380,7 @@ function loft(secs, N = 28) {
     }
   }
   for (let k = 0; k < secs.length - 1; k++) for (let i = 0; i < N; i++) {
-    const a = k * N + i, b = k * N + (i + 1) % N, c = a + N, d = b + N; idx.push(a, c, b, b, c, d);
+    const a = k * N + i, b = k * N + (i + 1) % N, c = a + N, d = b + N; idx.push(a, b, c, b, d, c);   // outward when z increases along secs
   }
   // caps
   for (const [k, flip] of [[0, true], [secs.length - 1, false]]) {
@@ -390,7 +390,6 @@ function loft(secs, N = 28) {
   }
   if (secs[secs.length - 1].z < secs[0].z) for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }   // lofted nose-first: keep faces outward
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-  // the forward-facing direction is -z, so face winding above is outward when z increases along secs
   return g;
 }
 function nozzle(B, p, r, len = r * 1.4, flare = 1.15) {

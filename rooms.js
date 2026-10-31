@@ -293,6 +293,8 @@ export function buildBriefing(parent) {
 }
 
 // ---------------------------------------------------------------- HANGAR
+// parking spots sized to the fighters (13–27 m): two light fighters up front, mediums in the middle, the Longbow at the back
+const HANGAR_PADS = [[-16, 8], [16, 8], [-15, -13], [15, -13], [0, -38]];
 export function buildHangar(parent, alert = false) {
   const g = new THREE.Group(); parent.add(g);
   const metal = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.45, metalness: 0.8 });
@@ -315,7 +317,7 @@ export function buildHangar(parent, alert = false) {
   const keyL = new THREE.DirectionalLight(0xfff0e0, alert ? 1.4 : 2.2); keyL.position.set(10, 20, 15); g.add(keyL);
   const beacons = [];
   if (alert) for (const [x, z] of [[-20, -30], [20, -30], [-20, 10], [20, 10], [0, -45]]) { const l = new THREE.PointLight(0xff2010, 0, 30, 1.8); l.position.set(x, 12, z); g.add(l); const b = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff2010 })); b.position.copy(l.position); g.add(b); beacons.push({ l, b }); }
-  return { g, beacons, pads: [[0, 0, -12], [-14, 0, -6], [14, 0, -6], [-14, 0, -26], [14, 0, -26]] };
+  return { g, beacons, pads: HANGAR_PADS.map(([x, z]) => [x, 0, z]) };
 }
 
 // flight deck dressing (x -30..30, z -55..35, 22 m high): two catwalk tiers, giant columns, ducts,
@@ -344,7 +346,7 @@ function dressHangar(g, alert) {
   IK.ceilingPlane(g, -30, 30, -55, 35, H, IK.ceilingTex({ base: "#1c1f24", m: 6, seed: 19, lights: false }), 6);
   const wallT = IK.bulkheadTex({ base: "#353b43", accent: "#d8b020", th: tier, tw: 4.8, seed: 23, deck: "3", frame: 140 });
   // painted floor: pads, taxi lines to the tubes, hazard aprons, walkway lanes along the walls
-  [[0, -12], [-14, -6], [14, -6], [-14, -26], [14, -26]].forEach(([x, z], i) => padDecal(g, x, z, i + 1));
+  HANGAR_PADS.forEach(([x, z], i) => padDecal(g, x, z, i + 1));
   const paint = (x, z, w, d, mk = "paintYellow") => K.box(w, 0.01, d, mk, [x, 0.012, z]);
   for (const x of [-15, 0, 15]) { paint(x, -40, 0.3, 26); for (let z = -52; z < -28; z += 3) paint(x, z, 1.2, 0.25); }
   for (const x of [-14, 14]) paint(x, -16, 0.25, 10);

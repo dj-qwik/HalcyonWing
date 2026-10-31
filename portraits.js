@@ -176,9 +176,9 @@ function buildRig(id) {
         col[i * 4] = hcol.r * shade; col[i * 4 + 1] = hcol.g * shade; col[i * 4 + 2] = hcol.b * shade; col[i * 4 + 3] = Math.min(1, m * 1.25) * alpha + (strands ? 0 : 0.0);
       }
       const hg = new THREE.BufferGeometry(); hg.setAttribute("position", new THREE.BufferAttribute(hp, 3)); hg.setAttribute("uv", g.attributes.uv); hg.setAttribute("color", new THREE.BufferAttribute(col, 4)); hg.setIndex(tris); hg.computeVertexNormals();
-      inner.add(new THREE.Mesh(hg, new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, alphaMap: strands ? st : null, alphaTest: 0.5, bumpMap: st, bumpScale: 1.5, roughness: style === "slick" ? 0.3 : 0.5, sheen: 1, sheenColor: hcol.clone().lerp(new THREE.Color(0xffffff), 0.55), sheenRoughness: 0.3, side: THREE.DoubleSide })));
+      inner.add(new THREE.Mesh(hg, new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, alphaMap: strands ? st : null, alphaTest: 0.5, bumpMap: st, bumpScale: 1.5, roughness: style === "slick" ? 0.55 : 0.78, sheen: 0.35, sheenColor: hcol.clone().lerp(new THREE.Color(0xffffff), 0.15), sheenRoughness: 0.65, specularIntensity: 0.25, envMapIntensity: 0.25, side: THREE.DoubleSide })));
     }
-    const ballMat = new THREE.MeshPhysicalMaterial({ color: hcol, roughness: 0.5, sheen: 0.8, sheenColor: hcol.clone().lerp(new THREE.Color(0xffffff), 0.5), bumpMap: st, bumpScale: 2 });
+    const ballMat = new THREE.MeshPhysicalMaterial({ color: hcol, roughness: 0.78, sheen: 0.35, sheenColor: hcol.clone().lerp(new THREE.Color(0xffffff), 0.15), sheenRoughness: 0.65, specularIntensity: 0.25, envMapIntensity: 0.25, bumpMap: st, bumpScale: 2 });   // hair is matte: no silvery sheen
     if (style === "bun") { const b = new THREE.Mesh(new THREE.SphereGeometry(0.34, 24, 18), ballMat); b.position.set(0, Y(8.2), -0.38); inner.add(b); }
     if (style === "tied") { const b = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 18), ballMat); b.scale.set(1, 1.15, 1); b.position.set(0, Y(7.72), -0.76); inner.add(b); }
     if (style === "long") { const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.08, 1.6, 20), ballMat); tail.position.set(0, Y(6.75), -0.62); tail.rotation.x = 0.28; inner.add(tail); const knot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 14), ballMat); knot.position.set(0, Y(7.5), -0.7); inner.add(knot); }
@@ -300,7 +300,7 @@ function anim(rig, talk, t) {
   if (t >= a.sacT) { a.sac.set((Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.03, 0); a.sacT = t + 0.6 + Math.random() * 1.8; }
   return { jaw: a.jaw, blink, sac: a.sac };
 }
-const EYE_OPEN = 0.2, LID_SHUT = 0.27;
+const EYE_OPEN = 0.07, LID_SHUT = 0.27;
 // which way does this character's lid morph go? measure the average vertical travel of the vertices it moves
 function lidDir(rig) {
   if (rig._lid) return rig._lid;

@@ -8,22 +8,59 @@ const V3 = THREE.Vector3;
 export const FIG_SCALE = 0.104;
 const cache = new Map();
 
-function limb(len, r0, r1, mat) {
+// tapered, muscle-shaped limb: prof is [[t 0..1 down the bone, radius], ...]; depth squashes front-to-back
+function limb(len, prof, mat, depth = 0.9, fwd = 0) {
   const g = new THREE.Group();
-  const m = new THREE.Mesh(new THREE.CapsuleGeometry((r0 + r1) / 2, len, 6, 14), mat); m.position.y = -len / 2; m.scale.set(r0 / ((r0 + r1) / 2), 1, r0 / ((r0 + r1) / 2) * 0.92); g.add(m);
+  const pts = [new THREE.Vector2(0.001, 0)];
+  for (const [t, r] of prof) pts.push(new THREE.Vector2(r, -t * len));
+  pts.push(new THREE.Vector2(0.001, -len));
+  // round the ends: extra rings near the joints
+  const geo = new THREE.LatheGeometry(pts, 20); geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat); m.scale.set(1, 1, depth); m.position.z = fwd; g.add(m);
   return g;
+}
+// superellipse loft for the torso: sections of [y, halfWidth, halfDepth, zOffset, exponent]
+function loftBody(secs, seg = 40) {
+  const pos = [], idx = [], uv = [];
+  secs.forEach(([y, w, d, z0, n], j) => {
+    for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+      const px = Math.sign(s) * Math.pow(Math.abs(s), 2 / n) * w, pz = Math.sign(c) * Math.pow(Math.abs(c), 2 / n) * d + z0;
+      pos.push(px, y, pz); uv.push(i / seg, j / (secs.length - 1)); }
+  });
+  for (let j = 0; j < secs.length - 1; j++) for (let i = 0; i < seg; i++) { const a = j * (seg + 1) + i, b = a + seg + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  // caps
+  const capOf = (j, down) => { const c = pos.length / 3; const [y, , , z0] = secs[j]; pos.push(0, y, z0); uv.push(0.5, 0.5);
+    for (let i = 0; i < seg; i++) { const a = j * (seg + 1) + i; down ? idx.push(c, a + 1, a) : idx.push(c, a, a + 1); } };
+  capOf(0, true); capOf(secs.length - 1, false);
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function gloveHand(mat, s) {
+  // palm, four fingers in a loose curl, thumb angled in front
+  const h = new THREE.Group();
+  const palm = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 4, 10), mat); palm.scale.set(1.25, 1, 0.62); palm.position.y = -0.3; h.add(palm);
+  for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.42 - Math.abs(i - 1.5) * 0.06, 3, 8), mat); f.position.set((i - 1.5) * 0.115, -0.78, 0.05); f.rotation.x = 0.35; h.add(f); }
+  const th = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.32, 3, 8), mat); th.position.set(s * -0.24, -0.38, 0.14); th.rotation.set(0.5, 0, s * 0.55); h.add(th);
+  return h;
 }
 export function makeFigure(id, opts = {}) {
   const rig = makeBust(id); if (!rig) return null;
   rig.group.position.y = 0;
-  // trim the portrait bust down to head, neck and collar so the body takes over below
+  // trim the portrait bust down to head, neck and the collar ring, so the sculpted body takes over cleanly below
   rig.group.traverse(o => {
     if (!o.isMesh || !o.geometry.index || o.geometry.attributes.position.count < 500) return;
     const p = o.geometry.attributes.position, idx = o.geometry.index.array, keep = [];
-    const ok = i => p.getY(i) > 5.32 && Math.abs(p.getX(i)) < 1.75;
+    const ok = i => p.getY(i) > 5.56 && Math.abs(p.getX(i)) < 0.86;
     for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
     o.geometry.setIndex(keep);
   });
+  // drop the bust's own suit shoulders and whatever rides on them (patch, rank bars): the body below replaces them
+  let patchMat = null; rig.group.updateMatrixWorld(true); const drop = [];
+  rig.group.traverse(o => { if (!o.isMesh) return; const g = o.geometry; g.computeBoundingBox(); const bb = g.boundingBox, n = g.attributes.position.count;
+    const wp = o.getWorldPosition(new V3());
+    if (n < 500 && bb.max.x - bb.min.x > 3 && bb.max.y < 7) drop.push(o);                       // suit shoulder shell
+    else if (n < 100 && wp.y < 5.8 && Math.abs(wp.x) > 0.9) { if (o.material.map && !patchMat) patchMat = o.material; drop.push(o); }   // patch / insignia on it
+  });
+  for (const o of drop) o.parent.remove(o);
   const vh = DATA_VHARR.has(id);
   const suitCol = opts.suit || SUIT[id] || "#3a4a5a";
   const suit = new THREE.MeshStandardMaterial({ map: fabricTex(suitCol, vh), roughness: 0.85, metalness: 0.05 });
@@ -32,32 +69,41 @@ export function makeFigure(id, opts = {}) {
   const metal = new THREE.MeshStandardMaterial({ color: 0x8a9098, metalness: 0.9, roughness: 0.3 });
   const root = new THREE.Group(); const body = new THREE.Group(); root.add(body); body.scale.setScalar(FIG_SCALE * (vh ? 1.08 : 1));
   body.add(rig.group);
-  // torso
-  const prof = [[0, 5.6], [0.9, 5.62], [1.5, 5.45], [1.95, 4.8], [1.95, 4.0], [1.78, 3.0], [1.55, 1.9], [1.62, 0.8], [1.6, 0.05], [0, 0.0]].map(([r, y]) => new THREE.Vector2(r, y));
-  const torso = new THREE.Mesh(new THREE.LatheGeometry(prof, 32), suit); torso.scale.set(1, 1, 0.62); torso.position.z = 0.25; body.add(torso);
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(1.66, 1.66, 0.45, 32), dark); belt.scale.set(1, 1, 0.64); belt.position.set(0, 0.85, 0.25); body.add(belt);
-  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.38, 0.12), metal); buckle.position.set(0, 0.85, 1.32); body.add(buckle);
-  const zip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 4.2, 0.06), metal); zip.position.set(0, 3.0, 1.38); zip.rotation.x = -0.06; body.add(zip);
-  for (const s of [-1, 1]) { const pk = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.75, 0.15), suit); pk.position.set(s * 0.95, 3.75, 1.3); pk.rotation.y = s * 0.25; body.add(pk); }
-  // limbs
+  // torso: pelvis, waist, ribcage, chest, armpits, deltoid line, trapezius slope, neck base
+  const torso = new THREE.Mesh(loftBody([
+    [-0.1, 1.45, 0.92, 0.12, 2.6], [0.6, 1.58, 0.98, 0.14, 2.6], [1.4, 1.5, 0.92, 0.16, 2.5], [2.1, 1.42, 0.9, 0.17, 2.4],
+    [3.0, 1.55, 0.98, 0.2, 2.4], [3.8, 1.72, 1.06, 0.24, 2.5], [4.4, 1.9, 1.02, 0.2, 2.7], [4.85, 1.98, 0.88, 0.14, 3.0],
+    [5.12, 1.68, 0.74, 0.1, 2.6], [5.38, 1.08, 0.62, 0.08, 2.2], [5.55, 0.72, 0.58, 0.1, 2], [5.7, 0.64, 0.56, 0.12, 2]]), suit);
+  body.add(torso);
+  // flight-suit details: collar ring, belt, buckle, zip, chest pockets, shoulder seams
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.1, 8, 28), dark); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.9, 1); collar.position.set(0, 5.62, 0.12); body.add(collar);
+  const belt = new THREE.Mesh(loftBody([[0.62, 1.6, 1.0, 0.14, 2.6], [1.02, 1.56, 0.97, 0.15, 2.6]]), dark); body.add(belt);
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.12), metal); buckle.position.set(0, 0.82, 1.14); body.add(buckle);
+  const zip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 4.5, 0.05), metal); zip.position.set(0, 3.25, 1.24); zip.rotation.x = -0.035; body.add(zip);
+  for (const s of [-1, 1]) { const pk = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.66, 0.06), suit); pk.position.set(s * 0.92, 3.85, 1.25); pk.rotation.y = s * 0.2; body.add(pk); }
+  // limbs — joints sit inside the body volume so nothing reads as a ball stuck on the outside
   const L = {};
   for (const s of [-1, 1]) {
     const k = s < 0 ? "r" : "l";
-    const sh = new THREE.Group(); sh.position.set(s * 1.9, 4.8, 0.25); body.add(sh);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.56, 16, 12), suit); cap.scale.set(1, 0.85, 1); sh.add(cap);
-    const ua = limb(2.8, 0.55, 0.48, suit); sh.add(ua);
-    const el = new THREE.Group(); el.position.y = -2.85; ua.add(el);
-    const fa = limb(2.5, 0.46, 0.38, suit); el.add(fa);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.35, 14), dark); cuff.position.y = -2.4; fa.add(cuff);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), glove); hand.scale.set(0.8, 1.25, 0.6); hand.position.y = -2.95; fa.add(hand);
+    const sh = new THREE.Group(); sh.position.set(s * 1.56, 4.68, 0.14); body.add(sh);
+    // deltoid: an ellipsoid that rides with the arm and overlaps the torso's shoulder line
+    const del = new THREE.Mesh(new THREE.SphereGeometry(0.56, 18, 12), suit); del.scale.set(0.9, 1.2, 0.95); del.position.set(s * 0.1, -0.36, 0); sh.add(del);
+    const ua = limb(2.75, [[0, 0.5], [0.15, 0.56], [0.45, 0.52], [0.8, 0.43], [1, 0.4]], suit, 0.92); ua.position.x = s * 0.18; sh.add(ua);
+    const el = new THREE.Group(); el.position.y = -2.72; ua.add(el);
+    if (s > 0 && patchMat) { const pt = new THREE.Mesh(new THREE.CircleGeometry(0.3, 24), patchMat); pt.position.set(0.5, -0.78, 0.02); pt.rotation.y = Math.PI / 2; ua.add(pt); }   // squadron patch on the left sleeve
+    const fa = limb(2.4, [[0, 0.4], [0.18, 0.43], [0.5, 0.38], [0.9, 0.3], [1, 0.29]], suit, 0.85); el.add(fa);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.3, 16), dark); cuff.scale.z = 0.85; cuff.position.y = -2.3; fa.add(cuff);
+    const hand = gloveHand(glove, s); hand.position.y = -2.42; fa.add(hand);
     L["sh" + k] = sh; L["el" + k] = el;
-    const hip = new THREE.Group(); hip.position.set(s * 0.82, 0.1, 0.25); body.add(hip);
-    const th = limb(3.9, 0.78, 0.6, suit); hip.add(th);
+    const hip = new THREE.Group(); hip.position.set(s * 0.78, 0.1, 0.14); body.add(hip);
+    const th = limb(3.95, [[0, 0.8], [0.12, 0.82], [0.45, 0.72], [0.85, 0.56], [1, 0.52]], suit, 0.95); hip.add(th);
     const kn = new THREE.Group(); kn.position.y = -3.95; th.add(kn);
-    const kp = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), dark); kp.scale.set(1, 0.9, 0.6); kp.position.set(0, 0.1, 0.45); kn.add(kp);
-    const sn = limb(3.6, 0.58, 0.48, suit); kn.add(sn);
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.1, 1.9), dark); boot.position.set(0, -3.9, 0.45); sn.add(boot);
-    const sole = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.2, 2.0), new THREE.MeshStandardMaterial({ color: 0x0a0a0a })); sole.position.set(0, -4.45, 0.48); sn.add(sole);
+    
+    const sn = limb(3.55, [[0, 0.52], [0.25, 0.58], [0.6, 0.45], [0.9, 0.36], [1, 0.35]], suit, 0.92); kn.add(sn);
+    // boot: shaft, ankle, foot and sole
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.42, 1.4, 18), dark); shaft.scale.z = 0.95; shaft.position.y = -3.25; sn.add(shaft);
+    const foot = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.15, 4, 12), dark); foot.rotation.x = Math.PI / 2; foot.scale.set(1.0, 1, 0.78); foot.position.set(0, -4.12, 0.42); sn.add(foot);
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 2.05), new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.9 })); sole.position.set(0, -4.48, 0.42); sn.add(sole);
     L["hip" + k] = hip; L["kn" + k] = kn;
   }
   root.userData = { id, rig, L, body, pose: opts.pose || "stand", phase: Math.random() * 6, vh };
@@ -71,7 +117,7 @@ export function setPose(f, pose) {
   const U = f.userData, L = U.L; U.pose = pose;
   const set = (g, x = 0, y = 0, z = 0) => g.rotation.set(x, y, z);
   // standing defaults
-  set(L.shl, 0.05, 0, 0.16); set(L.shr, 0.05, 0, -0.16); set(L.ell, -0.25); set(L.elr, -0.25);
+  set(L.shl, 0.05, 0, 0.12); set(L.shr, 0.05, 0, -0.12); set(L.ell, -0.22); set(L.elr, -0.22);
   set(L.hipl, 0, 0, 0.03); set(L.hipr, 0, 0, -0.03); set(L.knl); set(L.knr);
   U.body.position.set(0, 8.75 * FIG_SCALE, 0); U.body.rotation.set(0, 0, 0);
   if (pose === "sit" || pose === "sitTable" || pose === "sitBack") {

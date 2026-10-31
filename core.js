@@ -256,9 +256,10 @@ function initDust() {
   const n = 700, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = rand(-300, 300);
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   C.dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9ab0c8, size: 0.6, transparent: true, opacity: 0.55, depthWrite: false }));
-  C.dust.frustumCulled = false; C.scene.add(C.dust);
+  C.dust.frustumCulled = false; C.dust.visible = false; C.scene.add(C.dust);
 }
 function updDust() {
+  if (!C.dust.visible) return;
   const p = C.dust.geometry.attributes.position, cp = C.camera.position;
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -1492,7 +1493,7 @@ function render(dt, flight) {
       cam.position.copy(camPos); cam.up.set(0, 1, 0); cam.lookAt(look);
     }
     updDust();
-    C.dust.visible = view !== "cine";
+    C.dust.visible = false;   // space dust removed: it read as square specks over the canopy and instruments
     if (view === "cockpit") paintCockpit(dt);
   }
   if (C.camLock) { cam.position.copy(C.camLock.pos); cam.up.set(0, 1, 0); cam.lookAt(C.camLock.look); if (C.camLock.fov) { cam.fov = C.camLock.fov; cam.updateProjectionMatrix(); } }

@@ -356,6 +356,11 @@ export const sfx = (() => {
     },
     missile(kind, pos) { if (!ctx) return; if (BUF.m_launch) { const sp = spatial(pos, 2200); ps(kind === "torp" ? "m_torp" : "m_launch", (kind === "torp" ? 0.75 : 0.6) * (pos ? 0.6 : 1) * sp.v, { jit: 0.06, pan: sp.pan, lp: sp.lp }); return; } if (pos) return; const t = ctx.currentTime; const n = ctx.createBufferSource(); n.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.5); n.connect(f); env(f, 0.4, t, 0.8); n.start(t); n.stop(t + 1); },
     beep(f = 880, d = 0.08, v = 0.12, type = "square") { if (!ctx) return; const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; env(o, v, t, d); o.start(t); o.stop(t + d + 0.02); },
+    // low body-blow under every impact: a pitched-down sine thump plus a burst of low-passed noise
+    thud(v = 1) { if (!ctx) return; const t = ctx.currentTime; v = Math.min(1.2, v);
+      const o = ctx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(74, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.3);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.85 * v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); o.connect(g); g.connect(fxBus); o.start(t); o.stop(t + 0.5);
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 240; const ng = ctx.createGain(); ng.gain.setValueAtTime(0.5 * v, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); n.connect(f); f.connect(ng); ng.connect(fxBus); n.start(t); n.stop(t + 0.25); },
     hit(shield) { if (!ctx) return; if (BUF.h_shield_0) { if (shield) ps(any(["h_shield_0", "h_shield_1", "h_shield_2"]), 0.5, { rate: 1.2 }); else { ps(any(["h_hull_0", "h_hull_1", "h_hull_2"]), 0.75); ps("x_punch", 0.45, { rate: 0.9 }); } return; } const t = ctx.currentTime; const n = ctx.createBufferSource(); n.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = shield ? "highpass" : "lowpass"; f.frequency.value = shield ? 2000 : 500; n.connect(f); env(f, 0.35, t, 0.25); n.start(t); n.stop(t + 0.3); },
     engine(speedFrac, ab) { if (!ctx) return; const t = ctx.currentTime;
       if (beds) { const on = C.state === "flight" || C.state === "auto" || C.state === "launch" ? 1 : 0, s = clamp(speedFrac, 0, 1.4);
@@ -646,7 +651,7 @@ export function startMission(mission, camp, onEnd) {
   C.escorts = (mission.escort || []).map((e, i) => { const s = new Ship(e.type, "concord", { id: e.id, name: e.name }); s.escort = true; s.keep = true; s.slot = i; return addShip(s); });
   C.navIdx = 0; C.result = null; C.dead = false; C.view = "cockpit"; C.comms = []; C.curComm = null; C.msgs = []; C.finaleT = undefined; C.carrierLostT = 0; C.sparkDone = false; C.ghost = null; C.scriptHold = false; C.commsOpen = false; C.dyingCaps = []; C.debris = []; C.t = 0;
   loadNav(0, true);
-  C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1;   // fade in, so the frames before the cockpit camera settles in the tube never show
+  C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1; C.cracks = null; C.hitDirs = []; C.kick = null; C.shake = 0;   // fade in, so the frames before the cockpit camera settles in the tube never show
   sfx.play("tense");
 }
 
@@ -982,6 +987,54 @@ function insideCap(s, p, k = 1) {
   const l = _c.copy(p).sub(s.pos).applyQuaternion(_q.copy(s.q).invert());
   return l.x > s.bmin.x * k && l.x < s.bmax.x * k && l.y > s.bmin.y * k && l.y < s.bmax.y * k && l.z > s.bmin.z * k && l.z < s.bmax.z * k;
 }
+// ---- impact kinetics on the player: directional jolt, smoothed shake, thud, hit-direction arcs, canopy cracks
+function playerHitFx(pl, amt, at, src, shieldOnly) {
+  const d = (src && src.pos ? src.pos.clone() : at.clone()).sub(pl.pos).applyQuaternion(_q.copy(pl.q).invert()).normalize();
+  const k = clamp(amt / 18, 0.35, 1);
+  C.shake = Math.min(0.8, (C.shake || 0) + (shieldOnly ? amt / 70 : amt / 26));
+  // the nose is knocked away from the impact, then springs back
+  const kk = C.kick || (C.kick = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+  const s = (shieldOnly ? 0.6 : 1.4) * k;
+  kk.vx += -d.y * s; kk.vy += d.x * s; kk.vz += (Math.random() - 0.5) * s * 0.8;
+  sfx.thud(shieldOnly ? 0.45 * k : 1.0 * k);
+  (C.hitDirs || (C.hitDirs = [])).push({ a: Math.atan2(-d.y, d.x), behind: d.z > 0.2, t: 1.5, hull: !shieldOnly, k });
+  if (C.hitDirs.length > 8) C.hitDirs.shift();
+  if (!shieldOnly) addCrack(d, amt);
+}
+function addCrack(d, amt) {
+  const cr = C.cracks || (C.cracks = { list: [], cv: null, w: 0, h: 0 });
+  if (cr.list.length >= 14) cr.list.shift();
+  // land roughly where the shot came from (behind: anywhere near the canopy rim)
+  let u, v; if (d.z < 0.2) { u = 0.5 + d.x * 0.42 + (Math.random() - 0.5) * 0.18; v = 0.45 - d.y * 0.36 + (Math.random() - 0.5) * 0.16; }
+  else { const a = Math.random() * Math.PI * 2; u = 0.5 + Math.cos(a) * 0.4; v = 0.42 + Math.sin(a) * 0.3; }
+  cr.list.push({ u: clamp(u, 0.06, 0.94), v: clamp(v, 0.06, 0.7), r: clamp(0.05 + amt / 260, 0.06, 0.16), seed: Math.random() * 1e6 | 0 });
+  cr.w = 0;   // force a redraw
+}
+function paintCracks(W, H) {
+  const cr = C.cracks; if (!cr || !cr.list.length) return null;
+  if (cr.cv && cr.w === W && cr.h === H) return cr.cv;
+  const cv = cr.cv || (cr.cv = document.createElement("canvas")); cv.width = W; cv.height = H; cr.w = W; cr.h = H;
+  const x = cv.getContext("2d"); x.clearRect(0, 0, W, H); x.lineCap = "round"; x.lineJoin = "round";
+  for (const c of cr.list) {
+    let s = c.seed; const R = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const cx = c.u * W, cy = c.v * H, r = c.r * Math.min(W, H) * 1.6;
+    const fog = x.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45); fog.addColorStop(0, "rgba(210,225,240,.16)"); fog.addColorStop(1, "rgba(210,225,240,0)"); x.fillStyle = fog; x.beginPath(); x.arc(cx, cy, r * 0.45, 0, 7); x.fill();
+    const arms = 7 + (R() * 5 | 0), ends = [];
+    const line = (pts, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.stroke(); };
+    for (let i = 0; i < arms; i++) {
+      let a = (i / arms) * Math.PI * 2 + (R() - 0.5) * 0.5, px = cx, py = cy; const len = r * (0.45 + R() * 0.6), segs = 5 + (R() * 4 | 0), pts = [[px, py]];
+      for (let j = 0; j < segs; j++) { a += (R() - 0.5) * 0.5; const L = len / segs * (0.7 + R() * 0.6); px += Math.cos(a) * L; py += Math.sin(a) * L; pts.push([px, py]);
+        if (R() < 0.3 && j > 0) { let ba = a + (R() < 0.5 ? 1 : -1) * (0.4 + R() * 0.6), bx = px, by = py; const bp = [[bx, by]]; for (let q = 0; q < 3; q++) { ba += (R() - 0.5) * 0.4; bx += Math.cos(ba) * L * 0.6; by += Math.sin(ba) * L * 0.6; bp.push([bx, by]); } line(bp.map(([p, q]) => [p + 1, q + 1]), 1.2, "rgba(0,0,0,.3)"); line(bp, 0.9, "rgba(225,235,250,.45)"); } }
+      ends.push(pts); line(pts.map(([p, q]) => [p + 1, q + 1]), 2.2, "rgba(0,0,0,.35)"); line(pts, 1.5, "rgba(235,242,255,.6)");
+    }
+    // concentric spider-web rings between neighbouring arms
+    for (const f of [0.22, 0.45, 0.7]) { if (R() < 0.25) continue; for (let i = 0; i < ends.length; i++) { if (R() < 0.35) continue; const A = ends[i], B = ends[(i + 1) % ends.length]; const ia = Math.min(A.length - 1, Math.round(A.length * f)), ib = Math.min(B.length - 1, Math.round(B.length * f)); const m = [(A[ia][0] + B[ib][0]) / 2 + (R() - 0.5) * 6, (A[ia][1] + B[ib][1]) / 2 + (R() - 0.5) * 6]; line([A[ia], m, B[ib]], 1.0, "rgba(225,235,250,.4)"); } }
+    // impact chip
+    x.fillStyle = "rgba(255,255,255,.55)"; x.beginPath(); x.arc(cx, cy, Math.max(2, r * 0.04), 0, 7); x.fill();
+    x.fillStyle = "rgba(20,24,30,.5)"; x.beginPath(); x.arc(cx, cy, Math.max(1, r * 0.018), 0, 7); x.fill();
+  }
+  return cv;
+}
 export function damage(t, amt, at, src, kind = "gun") {
   if (!t.alive) return;
   if (t.comp) { t.hp -= amt; spawnPart(at, tv(), 0.3, 3, 8, 0xffd080, 0x803010, 1, true); if (t.hp <= 0) killComp(t, src); return; }
@@ -1006,7 +1059,7 @@ export function damage(t, amt, at, src, kind = "gun") {
     const a = Math.min(t.ar[ai], rem); t.ar[ai] -= a; rem -= a;
     if (rem > 0) { t.core -= rem; if (t.isPlayer && Math.random() < 0.35) { const sys = pick(["guns", "engine", "radar", "itts", "shields", "comms"]); if (!t.dmg[sys]) { t.dmg[sys] = true; C.msgs.push({ t: 3, text: "DAMAGE: " + { guns: "GUN MOUNT", engine: "ENGINE", radar: "RADAR", itts: "ITTS", shields: "SHIELD GENERATOR", comms: "COMMS" }[sys] }); if (sys === "guns") { const g = t.guns.find(g => g.ok); if (g && t.guns.filter(x => x.ok).length > 1) g.ok = false; } } } }
   }
-  if (t.isPlayer) { C.shake = Math.min(1, (C.shake || 0) + amt / 30); C.hitFlash = rem > 0 || sh < amt ? "armor" : "shield"; C.hitFlashT = 0.25; sfx.hit(sh >= amt); rumble(Math.min(1, amt / 25), 140); C.stats.hitsTaken += amt; if (t.core < t.coreMax * 0.5) C.stats.wounded = true; }
+  if (t.isPlayer) { playerHitFx(t, amt, at, src, sh >= amt); C.hitFlash = rem > 0 || sh < amt ? "armor" : "shield"; C.hitFlashT = 0.25; sfx.hit(sh >= amt); rumble(Math.min(1, amt / 25), 140); C.stats.hitsTaken += amt; if (t.core < t.coreMax * 0.5) C.stats.wounded = true; }
   else spawnPart(at, t.vel, 0.2, 2, 6, sh >= amt ? 0x80c0ff : 0xffb060, 0x000000, 1, true);
   if (t.protect && t.core < 5) t.core = 5;
   if (t.core <= 0) {
@@ -1436,8 +1489,8 @@ function stepFlight(dt) {
     sfx.engine(clamp((t - 0.5) / 3.5, 0, 1) * 0.5 + (t > 4 ? 0.6 : 0), t > 4);
     if (t > 0.5 && !C.ls1) { C.ls1 = 1; C.comms.push({ who: "comms", text: `${C.camp.callsign || "Vigil"}, Halcyon flight control. Tube three is hot. Bring your systems up.` }); sfx.cue("u_powerup", 0.5, {}, 440, 0.4, 0.06, "sine"); }
     if (t > 2.4 && !C.ls2) { C.ls2 = 1; C.comms.push({ who: "comms", text: "Catapult armed. Launch in three... two... one..." }); }
-    if (t < 4.2) { pl.speed = 0; pl.vel.set(0, 0, 0); }
-    else { if (!C.ls3) { C.ls3 = 1; sfx.whoosh(2.4); rumble(0.8, 600); } pl.speed = Math.min(pl.def.ab * K * 1.2, pl.speed + dt * 520); pl.vel.set(0, 0, -pl.speed); pl.pos.addScaledVector(pl.vel, dt); C.shake = Math.max(C.shake || 0, 0.25); }
+    if (t < 4.2) { pl.speed = 0; pl.vel.set(0, 0, 0); if (t > 0.5) C.shake = Math.max(C.shake || 0, 0.04 + Math.min(1, (t - 0.5) / 3.7) * 0.07); }
+    else { if (!C.ls3) { C.ls3 = 1; sfx.whoosh(2.4); rumble(0.8, 600); sfx.thud(0.9); C.shake = 0.6; const kk = C.kick || (C.kick = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }); kk.vx += 1.4; } pl.speed = Math.min(pl.def.ab * K * 1.2, pl.speed + dt * 520); pl.vel.set(0, 0, -pl.speed); pl.pos.addScaledVector(pl.vel, dt); C.shake = Math.max(C.shake || 0, 0.14); }
     if (pl.pos.z < -60) { C.state = "flight"; C.ls1 = C.ls2 = C.ls3 = 0; C.view = "cockpit"; pl.setSpeed = pl.def.speed * K * 0.7; pl.speed = pl.def.speed * K; sfx.play("cruise"); C._calm = 0; if (C.tube) { C.world.remove(C.tube); C.tube = null; } }
   } else if (C.state === "auto") {
     if (C.stateT > 3.2) { loadNav(C.navIdx + 1); C.state = "flight"; C.fade = 1; }
@@ -1489,7 +1542,11 @@ function render(dt, flight) {
     if (view === "cockpit") {
       cam.position.copy(pl.pos); cam.quaternion.copy(pl.q);
       if (keysLook()) cam.quaternion.multiply(_q.setFromAxisAngle(new V3(0, 1, 0), Math.PI));
-      if (C.shake > 0) { cam.position.add(new V3(rand(-1, 1), rand(-1, 1), 0).multiplyScalar(C.shake * 0.3 * (C.opts.shake ?? 1)).applyQuaternion(pl.q)); C.shake = Math.max(0, C.shake - dt * 2.5); }
+      const shk = C.opts.shake ?? 1;
+      if (C.shake > 0) { const ts = performance.now() / 1000 * 38; cam.position.add(new V3(Math.sin(ts * 1.3) + Math.sin(ts * 2.9 + 1) * 0.5, Math.cos(ts * 1.7) + Math.sin(ts * 3.7 + 2) * 0.5, 0).multiplyScalar(C.shake * 0.2 * shk).applyQuaternion(pl.q)); C.shake = Math.max(0, C.shake - dt * 2.5); }
+      const kk = C.kick; if (kk) { const w = 90, z = 9;   // damped spring: snaps away, settles in ~0.4 s
+        for (const a of ["x", "y", "z"]) { const va = "v" + a; kk[va] += (-w * kk[a] - z * kk[va]) * dt; kk[a] += kk[va] * dt; }
+        if (shk > 0) cam.quaternion.multiply(_q.setFromEuler(new THREE.Euler(kk.x * 0.06 * shk, kk.y * 0.06 * shk, kk.z * 0.05 * shk))); }
       const U = C.cockpit.userData; if (U.armPivot) { U.armPivot.rotation.x = -pl.av.x * 0.12; U.armPivot.rotation.z = -pl.av.z * 0.07 + pl.av.y * 0.05; }
       if (U.updateArm) U.updateArm();
       if (U.flair) U.flair.update(dt, pl);
@@ -1654,6 +1711,22 @@ function drawHUD(flight) {
     // panels
     if (C.commsOpen) drawCommsMenu(x);
     // hit flash
+    { const cv = cockpit ? paintCracks(W, H) : null; if (cv) x.drawImage(cv, 0, 0, W, H); }
+    if (C.hitDirs && C.hitDirs.length) {
+      const dtH = C.hudDt || 1 / 60, cxH = W / 2, cyH = H / 2, Rr = Math.min(W, H) * 0.19;
+      C.hitDirs = C.hitDirs.filter(h => (h.t -= dtH) > 0);
+      for (const h of C.hitDirs) {
+        const f = Math.min(1, h.t / 1.5), col = h.hull ? "255,90,40" : "90,170,255", ca = Math.cos(h.a), sa = Math.sin(h.a);
+        // glow on the screen edge in that direction
+        const ex = cxH + ca * W * 0.5, ey = cyH + sa * H * 0.5, gr = x.createRadialGradient(ex, ey, 0, ex, ey, Math.min(W, H) * 0.42);
+        gr.addColorStop(0, `rgba(${col},${0.32 * f * h.k})`); gr.addColorStop(1, `rgba(${col},0)`); x.fillStyle = gr; x.fillRect(0, 0, W, H);
+        // arc on a ring around the reticle; behind-you hits get a double arc
+        x.save(); x.strokeStyle = `rgba(${col},${0.85 * f})`; x.lineWidth = 5; x.lineCap = "round"; x.shadowColor = `rgba(${col},${f})`; x.shadowBlur = 12;
+        x.beginPath(); x.arc(cxH, cyH, Rr, h.a - 0.28, h.a + 0.28); x.stroke();
+        if (h.behind) { x.lineWidth = 3; x.beginPath(); x.arc(cxH, cyH, Rr + 9, h.a - 0.2, h.a + 0.2); x.stroke(); }
+        x.restore();
+      }
+    }
     if (C.hitFlashT > 0) { C.hitFlashT -= C.hudDt || 1 / 60; x.fillStyle = C.hitFlash === "shield" ? `rgba(80,160,255,${C.hitFlashT})` : `rgba(255,60,30,${C.hitFlashT * 1.4})`; x.fillRect(0, 0, W, H); }
     if (pl.cloaked) { x.fillStyle = "rgba(40,120,200,.12)"; x.fillRect(0, 0, W, H); }
   } else if (C.view === "chase" && C.state === "flight" && !C.dead) {

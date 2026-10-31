@@ -565,7 +565,10 @@ const VNAMES = ["Vosk'ar", "Thrael", "Ka'zun", "Rhesk", "Ghavri", "Ulmek", "Sh't
 export class Ship {
   constructor(type, team, o = {}) {
     this.id = o.id || type + "_" + UID++; this.uid = UID++; this.type = type; this.team = team;
-    this.def = SHIPS[type]; this.isCap = !!this.def.capital; this.alive = true; this.pilot = o.pilot || null;
+    this.def = SHIPS[type];
+    // enemy fighters fly a little slower and turn a little wider than ours, so dogfights stay winnable
+    if (team === "vharr" && !this.def.capital) { const d = this.def; this.def = { ...d, speed: d.speed * 0.85, ab: d.ab * 0.85, accel: (d.accel || 0) * 0.85, pitch: d.pitch * 0.78, yaw: d.yaw * 0.78, roll: d.roll * 0.8 }; }
+    this.isCap = !!this.def.capital; this.alive = true; this.pilot = o.pilot || null;
     this.name = o.name || (this.pilot && CAST[this.pilot] ? (CAST[this.pilot].callsign || CAST[this.pilot].name) : this.def.name);
     if (!this.pilot && !this.isCap && team === "vharr") this.hunter = "Hunter " + pick(VNAMES);
     const modelKey = o.model || type;
@@ -914,6 +917,10 @@ function fireGuns(s, inheritVel) {
     const aimP = _a.copy(s.pos).addScaledVector(f, conv);
     const dir = aimP.sub(o).normalize();
     if (!s.isPlayer) dir.add(new V3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(0.012 * (1.2 - s.ai.skill))).normalize();
+    else if (C.target && C.target.alive && !C.target.isCap && !C.target.comp && !s.dmg.itts) {   // aim assist: within ~9 degrees of the lead pip, rounds bend onto it
+      const lp = leadPoint(s, C.target, GUNS[g.type].speed * K).clone(), want = lp.sub(o).normalize(), ang = dir.angleTo(want);
+      if (ang < 0.16) dir.lerp(want, 0.85 * (1 - ang / 0.16) + 0.15).normalize();
+    }
     const bolt = fireBolt(s, o, dir, g.type, inheritVel || s.vel), sz = GUNS[g.type].size;
     if (amb) { bolt.dmg *= 2.2; bolt.m.scale.multiplyScalar(1.6); }
     spawnPart(o, s.vel, 0.06 + sz * 0.02, 1.5 * sz * (amb ? 1.6 : 1), 3 * sz * (amb ? 1.6 : 1), GUNS[g.type].color, 0x000000, 1, true);
@@ -1168,7 +1175,7 @@ function updBolts(dt) {
       if (e.team === b.team && !(b.owner && b.owner.isPlayer)) continue;
       if (e.comp) { if (segDist(e.pos, prev, b.pos) < e.radius) { hit = e; break; } continue; }
       if (e.isCap) { if (e === b.owner) continue; if (insideCap(e, b.pos)) { hit = e; for (const c of e.comps) if (c.alive && c.pos.distanceTo(b.pos) < c.radius * 1.6) { hit = c; break; } break; } continue; }
-      if (segDist(e.pos, prev, b.pos) < e.radius * 0.85) { hit = e; break; }
+      if (segDist(e.pos, prev, b.pos) < (b.owner && b.owner.isPlayer ? Math.max(14, e.radius * 2.4) : e.radius * 0.85)) { hit = e; break; }   // arcade: the player's shots get a generous hit zone
     }
     if (!hit) for (const m of C.missiles) if ((m.type === "torp") && m.team !== b.team && segDist(m.pos, prev, b.pos) < 7) { m.hp -= b.dmg; if (m.hp <= 0) { m.dead = true; C.world.remove(m.mesh); explode(m.pos, 12); } b.life = 0; b.m.visible = false; break; }
     if (hit) {
@@ -1729,7 +1736,11 @@ function drawHUD(flight) {
         x.stroke();
         x.fillStyle = col; x.textAlign = "left"; x.fillText(`${(d / 1000 * 2).toFixed(1)}km`, p.x + s + 6, p.y - s + 6);
         // ITTS lead
-        if (!T.isCap && !T.comp && !pl.dmg.itts) { const gs = GUNS[pl.guns[0].type].speed * K; const lp = leadPoint(pl, T, gs); const q = proj(lp); if (!q.behind) { x.strokeStyle = col; x.lineWidth = 1.5; x.beginPath(); x.moveTo(q.x, q.y - 7); x.lineTo(q.x + 7, q.y); x.lineTo(q.x, q.y + 7); x.lineTo(q.x - 7, q.y); x.closePath(); x.stroke(); x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(q.x, q.y); x.globalAlpha = 0.3; x.stroke(); x.globalAlpha = 1; } }
+        if (!T.isCap && !T.comp && !pl.dmg.itts) { const gs = GUNS[pl.guns[0].type].speed * K; const lp = leadPoint(pl, T, gs); const q = proj(lp); if (!q.behind) { const dpx = lp.distanceTo(C.camera.position) || 1, foc = (H / 2) / Math.tan(C.camera.fov * Math.PI / 360), rp = clamp(Math.max(14, T.radius * 2.4) / dpx * foc, 12, 60);
+            const onPip = Math.hypot(q.x - W / 2, q.y - H / 2) < rp + 6;
+            x.strokeStyle = col; x.lineWidth = onPip ? 3 : 2; x.beginPath(); x.arc(q.x, q.y, rp, 0, 7); x.stroke();
+            if (onPip) { x.fillStyle = "rgba(255,90,60,.18)"; x.beginPath(); x.arc(q.x, q.y, rp, 0, 7); x.fill(); }
+            x.beginPath(); x.moveTo(q.x, q.y - rp * 0.45); x.lineTo(q.x + rp * 0.45, q.y); x.lineTo(q.x, q.y + rp * 0.45); x.lineTo(q.x - rp * 0.45, q.y); x.closePath(); x.stroke(); x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(q.x, q.y); x.globalAlpha = 0.3; x.stroke(); x.globalAlpha = 1; } }
         // missile lock reticle
         const def = MISSILES[pl.misSel];
         if (def && def.lock > 0 && pl.lock.tgt === T && pl.lock.t > 0) {
@@ -1888,6 +1899,11 @@ function drawVDUs(xL, xR, L, R) {
     x.fillText(pl.gunMode === 1 ? "1 AT A TIME" : ts.map(t => `${n(t)} ${many ? nm(t).slice(0, 4) : nm(t)}`).join(" + "), tx, ty); } ty += lh * 1.3;
   for (const [k, n] of Object.entries(pl.mis)) { x.fillStyle = k === pl.misSel ? "#fff" : DIM; x.fillText(`${k === pl.misSel ? "▶" : " "}${MISSILES[k].short} ×${n}`, tx, ty); ty += lh; }
   x.fillStyle = AMBER; x.fillText(`DECOY ×${pl.decoys}`, tx, ty); ty += lh;
+  { const bx = tx, bw = R.x + R.w - 12 - tx, bh = lh * 0.55; let by = Math.max(ty + lh * 0.4, R.y + R.h - lh * 3.6 - 8);
+    for (const [lab, f] of [["GUN", pl.energy / pl.energyMax], ["FUEL", pl.fuel / pl.fuelMax]]) {
+      x.fillStyle = AMBER; x.fillText(lab, bx, by); const x0 = bx + lh * 2.6, w0 = bw - lh * 2.6;
+      x.fillStyle = "rgba(0,0,0,.45)"; x.fillRect(x0, by + 1, w0, bh); x.fillStyle = f > 0.5 ? GREEN : f > 0.2 ? AMBER : RED; x.fillRect(x0, by + 1, w0 * clamp(f, 0, 1), bh); by += lh * 1.1; }
+    x.fillStyle = AMBER; x.fillText(`SPD ${Math.round(pl.speed / K)} / ${Math.round(pl.setSpeed / K)}`, bx, by); }
   const dmgs = Object.keys(pl.dmg); if (dmgs.length) { x.fillStyle = RED; x.fillText("DMG: " + dmgs.map(d => d.toUpperCase()).join(" "), R.x + 10, R.y + R.h - lh - 6); }
   x.restore();
 }

@@ -44,25 +44,31 @@ function gloveHand(mat, s) {
 }
 export function makeFigure(id, opts = {}) {
   const rig = makeBust(id); if (!rig) return null;
-  rig.group.position.y = 0;
-  // trim the portrait bust down to head, neck and the collar ring, so the sculpted body takes over cleanly below
+  // the cast was sculpted at different heights, so align each head by its own anatomy: the bust's collar band marks
+  // the base of its neck; shift the head so that point lands on the body's collar, and trim relative to it
+  const NECK_BASE = 6.5;
+  let band = null; rig.group.traverse(o => { if (!o.isMesh || o.material.map) return; const n = o.geometry.attributes.position.count; if (n < 700 || n > 1200) return;
+    o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox; if (bb.max.x - bb.min.x > 1.0 && bb.max.y - bb.min.y < 0.7) band = o; });
+  const dy = band ? NECK_BASE - band.geometry.boundingBox.min.y : 0;
+  rig.group.position.y = dy;
+  // trim the portrait bust down to head and neck, so the sculpted body takes over cleanly below
   rig.group.traverse(o => {
     if (!o.isMesh || !o.geometry.index || o.geometry.attributes.position.count < 500) return;
     const p = o.geometry.attributes.position, idx = o.geometry.index.array, keep = [];
-    const ok = i => p.getY(i) > 5.56 && Math.abs(p.getX(i)) < 0.86;
+    const ok = i => p.getY(i) + dy > 5.56 && Math.abs(p.getX(i)) < 0.86;
     for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
     o.geometry.setIndex(keep);
   });
-  // drop the bust's own clothing — its sculpted collar layer, suit shoulders and what rides on them (patch, rank bars):
-  // the body below supplies the collar, so the bare neck rises cleanly out of it
-  let patchMat = null; rig.group.updateMatrixWorld(true); const drop = [];
+  // drop the bust's own clothing — its sculpted collar layer, collar band, suit shoulders and what rides on them
+  // (patch, rank bars): the body below supplies the collar, so the bare neck rises cleanly out of it
+  let patchMat = null, spikeMat = null; rig.group.updateMatrixWorld(true); const drop = band ? [band] : [];
   let skinN = 0; rig.group.traverse(o => { if (o.isMesh && o.geometry.index && o.geometry.index.count > skinN) skinN = o.geometry.index.count; });
-  rig.group.traverse(o => { if (!o.isMesh) return; const g = o.geometry; g.computeBoundingBox(); const bb = g.boundingBox, n = g.attributes.position.count;
-    const wp = o.getWorldPosition(new V3());
+  rig.group.traverse(o => { if (!o.isMesh || o === band) return; const g = o.geometry; g.computeBoundingBox(); const bb = g.boundingBox, n = g.attributes.position.count;
+    const wp = o.getWorldPosition(new V3());   // includes dy
     if (n >= 500 && o.material.type === "MeshStandardMaterial" && o.material.map && g.index && g.index.count < skinN) { drop.push(o); return; }   // cloth collar layer
-    if (!o.material.map && bb.min.y > 6.3 && bb.max.y < 7.0 && bb.max.x - bb.min.x > 1.2) { drop.push(o); return; }   // the bust's collar trim band
-    if (n < 500 && bb.max.x - bb.min.x > 3 && bb.max.y < 7) drop.push(o);                       // suit shoulder shell
-    else if (n < 100 && wp.y < 5.8 && Math.abs(wp.x) > 0.9) { if (o.material.map && !patchMat) patchMat = o.material; drop.push(o); }   // patch / insignia on it
+    if (n < 500 && bb.max.x - bb.min.x > 3 && bb.max.y + dy < 7.2) drop.push(o);                    // suit shoulder shell
+    else if (n < 100 && wp.y < NECK_BASE + 0.45 && Math.abs(wp.x) > 0.5) { if (o.material.map && !patchMat) patchMat = o.material; drop.push(o); }   // patch / insignia on it
+    else if (wp.y < NECK_BASE + 0.45 && Math.abs(wp.x) > 1.0) { if (!spikeMat) spikeMat = o.material; drop.push(o); }   // Vharr pauldron spikes: remounted on the shoulders below
   });
   for (const o of drop) o.parent.remove(o);
   const vh = DATA_VHARR.has(id);
@@ -94,11 +100,13 @@ export function makeFigure(id, opts = {}) {
     const del = new THREE.Mesh(new THREE.SphereGeometry(0.56, 18, 12), suit); del.scale.set(0.9, 1.2, 0.95); del.position.set(s * 0.1, -0.36, 0); sh.add(del);
     const ua = limb(2.75, [[0, 0.5], [0.15, 0.56], [0.45, 0.52], [0.8, 0.43], [1, 0.4]], suit, 0.92); ua.position.x = s * 0.18; sh.add(ua);
     const el = new THREE.Group(); el.position.y = -2.72; ua.add(el);
+    if (vh && !spikeMat) spikeMat = new THREE.MeshStandardMaterial({ color: { ember: 0xc8b8a0, kaerr: 0x9a1a1a, shkara: 0xefeae0 }[id] || 0xa08060, roughness: 0.45, metalness: 0.1 });
+    if (vh && spikeMat) for (let j = 0; j < 3; j++) { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.13, 1.15 - j * 0.18, 8), spikeMat); sp.position.set(s * (0.5 + j * 0.04), 0.42 - j * 0.04, -0.3 + j * 0.3); sp.rotation.set(-0.2 + j * 0.2, 0, -s * (0.55 + j * 0.15)); sh.add(sp); }   // Vharr shoulder spikes
     if (s > 0 && patchMat) { const pt = new THREE.Mesh(new THREE.CircleGeometry(0.3, 24), patchMat); pt.position.set(0.5, -0.78, 0.02); pt.rotation.y = Math.PI / 2; ua.add(pt); }   // squadron patch on the left sleeve
     const fa = limb(2.4, [[0, 0.4], [0.18, 0.43], [0.5, 0.38], [0.9, 0.3], [1, 0.29]], suit, 0.85); el.add(fa);
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.3, 16), dark); cuff.scale.z = 0.85; cuff.position.y = -2.3; fa.add(cuff);
     const hand = gloveHand(glove, s); hand.position.y = -2.42; fa.add(hand);
-    L["sh" + k] = sh; L["el" + k] = el;
+    L["sh" + k] = sh; L["el" + k] = el; L["hand" + k] = hand;
     const hip = new THREE.Group(); hip.position.set(s * 0.78, 0.1, 0.14); body.add(hip);
     const th = limb(3.95, [[0, 0.8], [0.12, 0.82], [0.45, 0.72], [0.85, 0.56], [1, 0.52]], suit, 0.95); hip.add(th);
     const kn = new THREE.Group(); kn.position.y = -3.95; th.add(kn);
@@ -133,7 +141,10 @@ export function setPose(f, pose) {
   }
   if (pose === "lean") { set(L.shr, -1.1, 0, -0.35); set(L.elr, -1.4); set(L.hipl, 0, 0, 0.1); set(L.knl, 0.15); U.body.rotation.z = 0.04; }
   if (pose === "point") { set(L.shr, -1.4, 0, -0.55); set(L.elr, -0.15); }
-  if (pose === "armsCrossed") { set(L.shl, -0.45, 0, -0.32); set(L.shr, -0.5, 0, 0.32); set(L.ell, -1.75, 0.0, -0.9); set(L.elr, -1.75, 0.0, 0.9); }
+  if (L.handl) { L.handl.visible = L.handr.visible = true; }
+  if (pose === "armsCrossed") {   // forearms fold across the chest; hands tuck under the opposite upper arm
+    set(L.shl, -0.36, 0, -0.16); set(L.shr, -0.52, 0, 0.16); set(L.ell, -1.95, 0.0, -0.86); set(L.elr, -1.8, 0.0, 0.86);
+    if (L.handl) { L.handl.visible = L.handr.visible = false; } }
   if (pose === "salute") { set(L.shr, -1.3, 0, -1.2); set(L.elr, -2.3); }
 }
 // per-frame: idle sway / run cycle; talk 0..1; camera for eye contact; face = yaw toward look target

@@ -53,10 +53,14 @@ export function makeFigure(id, opts = {}) {
     for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
     o.geometry.setIndex(keep);
   });
-  // drop the bust's own suit shoulders and whatever rides on them (patch, rank bars): the body below replaces them
+  // drop the bust's own clothing — its sculpted collar layer, suit shoulders and what rides on them (patch, rank bars):
+  // the body below supplies the collar, so the bare neck rises cleanly out of it
   let patchMat = null; rig.group.updateMatrixWorld(true); const drop = [];
+  let skinN = 0; rig.group.traverse(o => { if (o.isMesh && o.geometry.index && o.geometry.index.count > skinN) skinN = o.geometry.index.count; });
   rig.group.traverse(o => { if (!o.isMesh) return; const g = o.geometry; g.computeBoundingBox(); const bb = g.boundingBox, n = g.attributes.position.count;
     const wp = o.getWorldPosition(new V3());
+    if (n >= 500 && o.material.type === "MeshStandardMaterial" && o.material.map && g.index && g.index.count < skinN) { drop.push(o); return; }   // cloth collar layer
+    if (!o.material.map && bb.min.y > 6.3 && bb.max.y < 7.0 && bb.max.x - bb.min.x > 1.2) { drop.push(o); return; }   // the bust's collar trim band
     if (n < 500 && bb.max.x - bb.min.x > 3 && bb.max.y < 7) drop.push(o);                       // suit shoulder shell
     else if (n < 100 && wp.y < 5.8 && Math.abs(wp.x) > 0.9) { if (o.material.map && !patchMat) patchMat = o.material; drop.push(o); }   // patch / insignia on it
   });
@@ -73,10 +77,10 @@ export function makeFigure(id, opts = {}) {
   const torso = new THREE.Mesh(loftBody([
     [-0.1, 1.45, 0.92, 0.12, 2.6], [0.6, 1.58, 0.98, 0.14, 2.6], [1.4, 1.5, 0.92, 0.16, 2.5], [2.1, 1.42, 0.9, 0.17, 2.4],
     [3.0, 1.55, 0.98, 0.2, 2.4], [3.8, 1.72, 1.06, 0.24, 2.5], [4.4, 1.9, 1.02, 0.2, 2.7], [4.85, 1.98, 0.88, 0.14, 3.0],
-    [5.12, 1.68, 0.74, 0.1, 2.6], [5.38, 1.08, 0.62, 0.08, 2.2], [5.55, 0.72, 0.58, 0.1, 2], [5.7, 0.64, 0.56, 0.12, 2]]), suit);
+    [5.12, 1.68, 0.74, 0.1, 2.6], [5.38, 1.08, 0.66, 0.08, 2.2], [5.56, 0.8, 0.66, 0.1, 2], [5.75, 0.68, 0.6, 0.1, 2], [6.1, 0.6, 0.56, 0.06, 2], [6.42, 0.6, 0.56, 0.02, 2]]), suit);   // high flight-suit collar up under the jaw
   body.add(torso);
   // flight-suit details: collar ring, belt, buckle, zip, chest pockets, shoulder seams
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.1, 8, 28), dark); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.9, 1); collar.position.set(0, 5.62, 0.12); body.add(collar);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.07, 8, 28), dark); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.92, 1); collar.position.set(0, 6.42, 0.02); body.add(collar);
   const belt = new THREE.Mesh(loftBody([[0.62, 1.6, 1.0, 0.14, 2.6], [1.02, 1.56, 0.97, 0.15, 2.6]]), dark); body.add(belt);
   const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.12), metal); buckle.position.set(0, 0.82, 1.14); body.add(buckle);
   const zip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 4.5, 0.05), metal); zip.position.set(0, 3.25, 1.24); zip.rotation.x = -0.035; body.add(zip);

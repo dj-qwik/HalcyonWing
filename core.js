@@ -1852,9 +1852,14 @@ function drawVDUs(xL, xR, L, R) {
   x.restore(); x = xR; x.save(); x.font = `600 ${Math.max(9, L.h * 0.075) | 0}px 'Share Tech Mono', monospace`; x.textBaseline = "top";
   const cx = R.x + R.w * 0.28, cy = R.y + R.h * 0.55, s = Math.min(R.w, R.h) * 0.24;
   const sf = pl.sh[0] / pl.shMax[0], sb = pl.sh[1] / pl.shMax[1];
-  x.lineWidth = 3;
-  x.strokeStyle = `rgba(120,200,255,${0.25 + sf * 0.75})`; x.beginPath(); x.arc(cx, cy, s * 1.25, Math.PI * 1.15, Math.PI * 1.85); x.stroke();
-  x.strokeStyle = `rgba(120,200,255,${0.25 + sb * 0.75})`; x.beginPath(); x.arc(cx, cy, s * 1.25, Math.PI * 0.15, Math.PI * 0.85); x.stroke();
+  // shield layers, Wing Commander style: one arc per layer, more layers on stronger ships; every layer of a section shares its colour:
+  // green above 75%, yellow above 50%, orange above 25%, red until empty; an empty section shows no bars at all
+  const nL = clamp(Math.round(pl.shMax[0] / 45), 1, 4), gap = s * 0.14;
+  for (const [f, a0, a1] of [[sf, Math.PI * 1.15, Math.PI * 1.85], [sb, Math.PI * 0.15, Math.PI * 0.85]]) for (let i = 0; i < nL; i++) {
+    const r = s * 1.12 + i * gap;
+    x.lineWidth = Math.max(2, s * 0.07);
+    if (f > 0) { x.strokeStyle = f > 0.75 ? "#5dff8a" : f > 0.5 ? "#ffe23a" : f > 0.25 ? "#ff9a2a" : "#ff3a2a"; x.beginPath(); x.arc(cx, cy, r, a0, a1); x.stroke(); }
+  }
   const acol = i => { const f = pl.ar[i] / pl.arMax[i]; return f > 0.6 ? GREEN : f > 0.25 ? AMBER : f > 0 ? RED : "#550000"; };
   x.lineWidth = 4;
   x.strokeStyle = acol(0); x.beginPath(); x.moveTo(cx - s * 0.35, cy - s * 0.9); x.lineTo(cx + s * 0.35, cy - s * 0.9); x.stroke();
@@ -1863,11 +1868,24 @@ function drawVDUs(xL, xR, L, R) {
   x.strokeStyle = acol(3); x.beginPath(); x.moveTo(cx + s * 0.75, cy - s * 0.5); x.lineTo(cx + s * 0.75, cy + s * 0.5); x.stroke();
   const cf = pl.core / pl.coreMax; x.fillStyle = cf > 0.6 ? GREEN : cf > 0.3 ? AMBER : RED;
   x.beginPath(); x.moveTo(cx, cy - s * 0.6); x.lineTo(cx + s * 0.4, cy + s * 0.5); x.lineTo(cx, cy + s * 0.3); x.lineTo(cx - s * 0.4, cy + s * 0.5); x.closePath(); x.fill();
+  // gun hardpoints on the silhouette: lit in the gun's colour when that gun is hot in the current mode
+  { const usable = pl.guns.filter(g => g.ok), types = gunTypes(pl), m = pl.gunMode || 0;
+    const hot = new Set(m === 0 ? usable : m === 1 ? (usable.length ? [usable[pl.gunAlt % usable.length]] : []) : usable.filter(g => g.type === types[m - 2]));
+    let mx = 0.1, mz = 0.1; for (const g of pl.guns) { mx = Math.max(mx, Math.abs(g.pos.x)); mz = Math.max(mz, Math.abs(g.pos.z)); }
+    pl.guns.forEach((g, i) => {
+      const gx = cx + (g.pos.x / mx) * s * 0.9, gy = cy + clamp(g.pos.z / mz, -1, 1) * s * 0.3 - s * 0.1, rr = Math.max(3, s * 0.1);
+      if (!g.ok) { x.strokeStyle = RED; x.lineWidth = 2; x.beginPath(); x.moveTo(gx - rr, gy - rr); x.lineTo(gx + rr, gy + rr); x.moveTo(gx + rr, gy - rr); x.lineTo(gx - rr, gy + rr); x.stroke(); return; }
+      const col = "#" + new THREE.Color(GUNS[g.type].color).getHexString();
+      if (hot.has(g)) { x.save(); x.shadowColor = col; x.shadowBlur = 8; x.fillStyle = col; x.fillRect(gx - rr * 0.6, gy - rr * 1.6, rr * 1.2, rr * 3.2); x.restore(); }
+      else { x.strokeStyle = "rgba(125,255,168,.35)"; x.lineWidth = 1; x.strokeRect(gx - rr * 0.6, gy - rr * 1.6, rr * 1.2, rr * 3.2); }
+    }); }
   x.fillStyle = AMBER; x.textAlign = "left";
   const tx = R.x + R.w * 0.56; let ty = R.y + 10;
   x.fillText(pl.def.name.split(" ").pop().toUpperCase(), R.x + 10, R.y + 8);
   x.fillText(`GUNS ${gunModeShort(pl)}`, tx, ty); ty += lh;
-  { const ts = pl.gunMode >= 2 ? [gunTypes(pl)[pl.gunMode - 2]] : gunTypes(pl); x.fillText(ts.map(t => GUNS[t].name.split(" ")[0].toUpperCase()).join("+"), tx, ty); } ty += lh * 1.3;
+  { const ts = pl.gunMode >= 2 ? [gunTypes(pl)[pl.gunMode - 2]] : gunTypes(pl), many = ts.length > 1;
+    const n = t => pl.guns.filter(g => g.type === t && g.ok).length, nm = t => GUNS[t].name.split(" ")[0].toUpperCase();
+    x.fillText(pl.gunMode === 1 ? "1 AT A TIME" : ts.map(t => `${n(t)} ${many ? nm(t).slice(0, 4) : nm(t)}`).join(" + "), tx, ty); } ty += lh * 1.3;
   for (const [k, n] of Object.entries(pl.mis)) { x.fillStyle = k === pl.misSel ? "#fff" : DIM; x.fillText(`${k === pl.misSel ? "▶" : " "}${MISSILES[k].short} ×${n}`, tx, ty); ty += lh; }
   x.fillStyle = AMBER; x.fillText(`DECOY ×${pl.decoys}`, tx, ty); ty += lh;
   const dmgs = Object.keys(pl.dmg); if (dmgs.length) { x.fillStyle = RED; x.fillText("DMG: " + dmgs.map(d => d.toUpperCase()).join(" "), R.x + 10, R.y + R.h - lh - 6); }

@@ -46,7 +46,7 @@ export function makeFigure(id, opts = {}) {
   const rig = makeBust(id); if (!rig) return null;
   // the cast was sculpted at different heights, so align each head by its own anatomy: the bust's collar band marks
   // the base of its neck; shift the head so that point lands on the body's collar, and trim relative to it
-  const NECK_BASE = 6.08;   // where the bust's neck meets the suit collar: a natural chin-to-shoulder distance
+  const NECK_BASE = 5.72;   // where the bust's neck meets the suit collar: a natural chin-to-shoulder distance
   let band = null; rig.group.traverse(o => { if (!o.isMesh || o.material.map) return; const n = o.geometry.attributes.position.count; if (n < 700 || n > 1200) return;
     o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox; if (bb.max.x - bb.min.x > 1.0 && bb.max.y - bb.min.y < 0.7) band = o; });
   const dy = band ? NECK_BASE - band.geometry.boundingBox.min.y : 0;
@@ -55,7 +55,7 @@ export function makeFigure(id, opts = {}) {
   rig.group.traverse(o => {
     if (!o.isMesh || !o.geometry.index || o.geometry.attributes.position.count < 500) return;
     const p = o.geometry.attributes.position, idx = o.geometry.index.array, keep = [];
-    const ok = i => { const y = p.getY(i) + dy; return y > NECK_BASE - 0.5 && (Math.abs(p.getX(i)) < 0.86 || y > NECK_BASE + 0.3); };   // side cut only below the jaw
+    const ok = i => { const y = p.getY(i) + dy; return y > NECK_BASE - 0.5 && (Math.abs(p.getX(i)) < 0.54 || y > NECK_BASE + 0.16); };   // below the neck base keep only what fits inside the collar; never cut the jaw
     for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
     o.geometry.setIndex(keep);
   });

@@ -46,7 +46,7 @@ export function makeFigure(id, opts = {}) {
   const rig = makeBust(id); if (!rig) return null;
   // the cast was sculpted at different heights, so align each head by its own anatomy: the bust's collar band marks
   // the base of its neck; shift the head so that point lands on the body's collar, and trim relative to it
-  const NECK_BASE = 6.5;
+  const NECK_BASE = 6.08;   // where the bust's neck meets the suit collar: a natural chin-to-shoulder distance
   let band = null; rig.group.traverse(o => { if (!o.isMesh || o.material.map) return; const n = o.geometry.attributes.position.count; if (n < 700 || n > 1200) return;
     o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox; if (bb.max.x - bb.min.x > 1.0 && bb.max.y - bb.min.y < 0.7) band = o; });
   const dy = band ? NECK_BASE - band.geometry.boundingBox.min.y : 0;
@@ -55,7 +55,7 @@ export function makeFigure(id, opts = {}) {
   rig.group.traverse(o => {
     if (!o.isMesh || !o.geometry.index || o.geometry.attributes.position.count < 500) return;
     const p = o.geometry.attributes.position, idx = o.geometry.index.array, keep = [];
-    const ok = i => p.getY(i) + dy > 5.56 && Math.abs(p.getX(i)) < 0.86;
+    const ok = i => { const y = p.getY(i) + dy; return y > NECK_BASE - 0.5 && (Math.abs(p.getX(i)) < 0.86 || y > NECK_BASE + 0.3); };   // side cut only below the jaw
     for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
     o.geometry.setIndex(keep);
   });
@@ -83,10 +83,10 @@ export function makeFigure(id, opts = {}) {
   const torso = new THREE.Mesh(loftBody([
     [-0.1, 1.45, 0.92, 0.12, 2.6], [0.6, 1.58, 0.98, 0.14, 2.6], [1.4, 1.5, 0.92, 0.16, 2.5], [2.1, 1.42, 0.9, 0.17, 2.4],
     [3.0, 1.55, 0.98, 0.2, 2.4], [3.8, 1.72, 1.06, 0.24, 2.5], [4.4, 1.9, 1.02, 0.2, 2.7], [4.85, 1.98, 0.88, 0.14, 3.0],
-    [5.12, 1.68, 0.74, 0.1, 2.6], [5.38, 1.08, 0.66, 0.08, 2.2], [5.56, 0.8, 0.66, 0.1, 2], [5.75, 0.68, 0.6, 0.1, 2], [6.1, 0.6, 0.56, 0.06, 2], [6.42, 0.6, 0.56, 0.02, 2]]), suit);   // high flight-suit collar up under the jaw
+    [5.12, 1.68, 0.74, 0.1, 2.6], [5.38, 1.08, 0.66, 0.08, 2.2], [5.55, 0.78, 0.64, 0.1, 2], [5.8, 0.64, 0.58, 0.08, 2], [6.1, 0.6, 0.56, 0.04, 2]]), suit);   // high flight-suit collar up under the jaw
   body.add(torso);
   // flight-suit details: collar ring, belt, buckle, zip, chest pockets, shoulder seams
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.07, 8, 28), dark); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.92, 1); collar.position.set(0, 6.42, 0.02); body.add(collar);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.07, 8, 28), dark); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.92, 1); collar.position.set(0, 6.1, 0.04); body.add(collar);
   const belt = new THREE.Mesh(loftBody([[0.62, 1.6, 1.0, 0.14, 2.6], [1.02, 1.56, 0.97, 0.15, 2.6]]), dark); body.add(belt);
   const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.12), metal); buckle.position.set(0, 0.82, 1.14); body.add(buckle);
   const zip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 4.5, 0.05), metal); zip.position.set(0, 3.25, 1.24); zip.rotation.x = -0.035; body.add(zip);

@@ -411,7 +411,12 @@ function missile(B, p, len = 2.6, r = 0.2, nose = "red") {
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; B.add(G.box(r * 0.12, r * 2.6, len * 0.16), "dark", [p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r, p[2] + len * 0.3], [0, 0, a]); }
   B.add(G.box(r * 0.8, r * 1.2, len * 0.5), "dark", [p[0], p[1] + r * 1.3, p[2]]);       // pylon
 }
+// build a ship with its canopy removed (glass, frame hoops and spine), leaving only the sill: for scenes where a
+// separate opening canopy is fitted
+let NO_CANOPY = false;
+export function buildShipOpen(type) { NO_CANOPY = true; try { return buildShip(type); } finally { NO_CANOPY = false; } }
 function canopy(B, p, sz, bows = 3) {
+  if (NO_CANOPY) { B.add(G.sph(1, 24, 12), "dark", [p[0], p[1] - sz[1] * 0.05, p[2]], [0, 0, 0], [sz[0] * 1.06, sz[1] * 0.3, sz[2] * 1.03]); return; }
   B.add(G.sph(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), "glass", p, [0, 0, 0], sz);
   B.add(G.sph(1, 24, 12), "dark", [p[0], p[1] - sz[1] * 0.05, p[2]], [0, 0, 0], [sz[0] * 1.06, sz[1] * 0.3, sz[2] * 1.03]);
   for (let i = 0; i < bows; i++) { const z = p[2] + sz[2] * (-0.45 + i * 0.9 / Math.max(1, bows - 1)); const k = Math.sqrt(Math.max(0.05, 1 - ((z - p[2]) / sz[2]) ** 2)); B.add(G.torus(1, 0.045, 24), "dark", [p[0], p[1], z], [0, 0, 0], [sz[0] * k, sz[1] * k, 1]); }

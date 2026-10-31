@@ -538,8 +538,7 @@ Object.assign(STAGES, {
     const ms = shot.ms; baseStage({ ...hubEnv(), fov: 52 }); C.sun.intensity = 0.3; C.fill.intensity = 0.15;
     const R = ROOMS.buildHangar(C.world, true); C.indoor = true;
     const myType = ms.ship, wingType = ms.ship === "wraith" ? "warden" : ms.ship;
-    const mine = put(myType, [0, 2.2, -12], [0, 0, 0]);
-    mine.obj.traverse(o => { if (o.isMesh && o.material && o.material.map === M.tex().glass) o.visible = false; });
+    const mine = M.buildShipOpen(myType); mine.obj.position.set(0, 2.2, -12); C.world.add(mine.obj);   // no fixed canopy frame: the hinged canopy below is the only one
     const can = ROOMS.makeCanopy(myType); mine.obj.add(can); can.rotation.x = 1.15;   // hinged at the rear: open = front lifted up
     const wsz = new THREE.Box3().setFromObject(M.buildShip(wingType).obj).getSize(new V3());   // measure, then park with clearance
     const others = (ms.wing || []).map((w, i) => ({ w, s: put(wingType, [(i % 2 ? 1 : -1) * (wsz.x + 4) * (1 + Math.floor(i / 2) * 0.5), 2.2, -6 - Math.floor(i / 2) * (wsz.z + 6)], [0, i % 2 ? -0.12 : 0.12, 0]) }));

@@ -29,6 +29,12 @@ export const C = {
 // ======================================================================= RENDERER
 export function init(container) {
   const r = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+  // if the GPU driver drops the 3D context, say so, step quality down and restart, instead of leaving a dead white canvas
+  r.domElement.addEventListener("webglcontextlost", e => { e.preventDefault(); onGpuLost(); }, false);
+  r.domElement.addEventListener("webglcontextrestored", () => location.reload(), false);
+  // first run on an integrated or mobile GPU: start at Medium so it isn't overcommitted
+  try { const saved = JSON.parse(localStorage.getItem("halcyonwing.opts") || "{}"); const gl = r.getContext(), d = gl.getExtension("WEBGL_debug_renderer_info"); C.gpuName = d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : "";
+    if (!saved.quality && /Intel|UHD|Iris|Radeon\(TM\) Graphics|Radeon Graphics|Vega \d+ Graphics|Mali|Adreno|PowerVR|SwiftShader/i.test(C.gpuName)) C.opts.quality = "medium"; } catch (e) { }
   r.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   r.setSize(window.innerWidth, window.innerHeight);
   r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
@@ -71,10 +77,25 @@ export function init(container) {
 // ======================================================================= QUALITY
 export const QUALITY = {
   low: { label: "Low", pr: 0.75, msaa: 0, bake: 1024, sky: 2048, stars: 0.6 },
-  medium: { label: "Medium", pr: 1, msaa: 2, bake: 2048, sky: 4096, stars: 1 },
+  medium: { label: "Medium", pr: 1, msaa: 2, bake: 2048, sky: 2048, stars: 1 },
   high: { label: "High", pr: 1.5, msaa: 4, bake: 2048, sky: 4096, stars: 1 },
   ultra: { label: "Ultra", pr: 2, msaa: 8, bake: 4096, sky: 4096, stars: 1 },
 };
+function onGpuLost() {
+  if (C.gpuLost) return; C.gpuLost = true;
+  const order = ["ultra", "high", "medium", "low"], i = order.indexOf(C.opts.quality || "high");
+  if (i >= 0 && i < order.length - 1) C.opts.quality = order[i + 1];
+  let n = 1; try { const k = "halcyonwing.gpuresets", now = Date.now(); const h = JSON.parse(sessionStorage.getItem(k) || "[]").filter(t => now - t < 120000); h.push(now); sessionStorage.setItem(k, JSON.stringify(h)); n = h.length; } catch (e) { }
+  try { const o = JSON.parse(localStorage.getItem("halcyonwing.opts") || "{}"); o.quality = C.opts.quality; localStorage.setItem("halcyonwing.opts", JSON.stringify(o)); } catch (e) { }
+  const auto = n <= 2;   // don't loop: after two resets in two minutes, wait for the player
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#06080b;color:#ece4d2;font:16px/1.5 'Barlow Semi Condensed',sans-serif;text-align:center;padding:24px";
+  el.innerHTML = `<div style="font:700 22px 'Chakra Petch',sans-serif;letter-spacing:.14em;color:#ffb440">GRAPHICS RESET</div>
+    <div style="max-width:48ch;opacity:.85">Your graphics driver stopped the game's 3D view, usually because the GPU ran short of memory. Graphics quality is now <b>${QUALITY[C.opts.quality].label}</b>. ${auto ? "Restarting…" : "You can lower it further under Options → Video."} Your campaign is saved at each mission.</div>
+    <button style="font:600 15px 'Chakra Petch',sans-serif;letter-spacing:.1em;padding:10px 22px;background:#ffb440;color:#120c04;border:0;cursor:pointer">RESTART NOW</button>`;
+  el.querySelector("button").onclick = () => location.reload(); document.body.appendChild(el);
+  if (auto) setTimeout(() => location.reload(), 2500);
+}
 export function applyQuality(first) {
   const q = QUALITY[C.opts.quality] || QUALITY.high, r = C.renderer; if (!r) return;
   const dpr = window.devicePixelRatio || 1;

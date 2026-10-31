@@ -31,13 +31,14 @@ export function preloadPortraits() {
 
 function warmRigs() {
   const ids = Object.keys(DATA.chars || {}); let i = 0;
-  const step = () => { if (i >= ids.length) return; const id = ids[i++]; try { ensure(); if (!rigs.get(id)) { const r = buildRig(id); if (r) { rigs.set(id, r); pose(r, 0, 0); scene.add(r.group); R.render(scene, cam); scene.remove(r.group); } } } catch (e) { } setTimeout(step, 120); };
-  setTimeout(step, 400);
+  const step = () => { if (i >= ids.length) return; const id = ids[i++]; try { ensure(); if (!rigs.get(id)) { const r = buildRig(id); if (r) { rigs.set(id, r); pose(r, 0, 0); scene.add(r.group); R.render(scene, cam); scene.remove(r.group); } } } catch (e) { } setTimeout(step, 250); };
+  setTimeout(step, 6000);   // after the title scene is up, so start-up doesn't spike GPU memory
 }
 function ensure() {
   if (R) return;
   R = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   R.setPixelRatio(1); R.setSize(W, H, false);
+  R.domElement.addEventListener("webglcontextlost", e => { e.preventDefault(); R = null; }, false);   // rebuilt on the next portrait draw
   R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05; R.outputColorSpace = THREE.SRGBColorSpace;
   R.setClearColor(0x000000, 0);
   scene = new THREE.Scene();

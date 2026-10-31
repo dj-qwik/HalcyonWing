@@ -444,3 +444,63 @@ export function makeCanopy(type) {
   piv.userData.seat = new V3(C.c[0], C.c[1] - C.s[1] * 0.9 - 0.4, C.c[2]);
   return piv;
 }
+
+// A canvas tarp draped over a parked ship (for prototypes the player hasn't been cleared for): the sheet is a
+// heightfield raycast down onto the ship, dilated so it slumps to the deck, with wrinkles, tie-downs and a stencil.
+export function makeTarp(shipObj, stencil = "R&D") {
+  shipObj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(shipObj), size = box.getSize(new V3()), ctr = box.getCenter(new V3());
+  const W = size.x + 3, L = size.z + 3, N = 64, base = shipObj.parent ? shipObj.parent.worldToLocal(new V3(0, 0, 0)).y : 0;
+  const meshes = []; shipObj.traverse(o => { if (o.isMesh && o.visible && !(o.material && o.material.transparent)) meshes.push(o); });
+  const ray = new THREE.Raycaster(); const H = new Float32Array((N + 1) * (N + 1)).fill(-1), down = new V3(0, -1, 0);
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const x = ctr.x - W / 2 + (i / N) * W, z = ctr.z - L / 2 + (j / N) * L;
+    ray.set(new V3(x, box.max.y + 5, z), down); const hit = ray.intersectObjects(meshes, false)[0];
+    if (hit) H[j * (N + 1) + i] = hit.point.y + 0.12;
+  }
+  // smooth over gaps (fins, antennae) and let the cloth fall away to the deck
+  const floorY = box.min.y - 2.0, step = (W / N) * 0.9;
+  for (let pass = 0; pass < N; pass++) for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const k = j * (N + 1) + i; let m = H[k];
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii > N || jj > N) continue; m = Math.max(m, H[jj * (N + 1) + ii] - step); }
+    H[k] = Math.max(m, floorY);
+  }
+  const g = new THREE.PlaneGeometry(W, L, N, N); g.rotateX(-Math.PI / 2); const p = g.attributes.position;
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const k = j * (N + 1) + i, x = ctr.x - W / 2 + (i / N) * W, z = ctr.z - L / 2 + (j / N) * L;
+    const wr = Math.sin(x * 1.7 + z * 0.4) * 0.05 + Math.sin(z * 2.3 - x * 0.7) * 0.04;
+    p.setXYZ(k, x, Math.max(floorY + 0.03, H[k] + wr), z);
+  }
+  g.computeVertexNormals();
+  // canvas texture: olive drab, seams, grime, big stencil
+  const c = document.createElement("canvas"); c.width = 1024; c.height = Math.round(1024 * L / W); const x = c.getContext("2d");
+  x.fillStyle = "#4a4a32"; x.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 3000; i++) { x.fillStyle = `rgba(${Math.random() < 0.5 ? "20,20,10" : "120,120,90"},${Math.random() * 0.08})`; x.fillRect(Math.random() * c.width, Math.random() * c.height, 3, 3); }
+  x.strokeStyle = "rgba(25,25,15,.6)"; x.lineWidth = 4; for (let t = 1; t < 4; t++) { x.beginPath(); x.moveTo(c.width * t / 4, 0); x.lineTo(c.width * t / 4, c.height); x.stroke(); }
+  x.save(); x.translate(c.width / 2, c.height * 0.5);   // reads upright from the deck's main viewpoint (nose toward the camera)
+  x.fillStyle = "rgba(225,215,170,.82)"; x.font = `800 ${Math.round(c.width * 0.26)}px 'Chakra Petch', 'DejaVu Sans', sans-serif`; x.textAlign = "center"; x.textBaseline = "middle";
+  x.fillText(stencil, 0, 0);
+  x.font = `700 ${Math.round(c.width * 0.05)}px 'Share Tech Mono', monospace`; x.fillText("RESTRICTED · AUTHORIZED PERSONNEL ONLY", 0, c.width * 0.2);
+  x.restore();
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const tarp = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0, side: THREE.DoubleSide }));
+  const grp = new THREE.Group(); grp.add(tarp);
+  // tie-down straps at the corners and a ring of hazard stanchions with rope
+  const yel = new THREE.MeshStandardMaterial({ color: 0xd8b020, roughness: 0.6 }), dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
+  const R = Math.max(W, L) * 0.5 + 1.5, posts = 10;
+  for (let i = 0; i < posts; i++) {
+    const a = i / posts * Math.PI * 2, px = ctr.x + Math.cos(a) * (W / 2 + 1.6), pz = ctr.z + Math.sin(a) * (L / 2 + 1.6);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 10), yel); post.position.set(px, floorY + 0.5, pz); grp.add(post);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.08, 14), dark); foot.position.set(px, floorY + 0.04, pz); grp.add(foot);
+    const b = i + 1, bx = ctr.x + Math.cos(b / posts * Math.PI * 2) * (W / 2 + 1.6), bz = ctr.z + Math.sin(b / posts * Math.PI * 2) * (L / 2 + 1.6);
+    const len = Math.hypot(bx - px, bz - pz), rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, len, 6), i % 2 ? yel : dark);
+    rope.position.set((px + bx) / 2, floorY + 0.92, (pz + bz) / 2); rope.rotation.set(0, -Math.atan2(bz - pz, bx - px), Math.PI / 2); grp.add(rope);
+  }
+  const sign = document.createElement("canvas"); sign.width = 512; sign.height = 256; const sx = sign.getContext("2d");
+  sx.fillStyle = "#b8201a"; sx.fillRect(0, 0, 512, 256); sx.fillStyle = "#fff"; sx.textAlign = "center"; sx.font = "800 70px 'Chakra Petch', sans-serif"; sx.fillText("RESTRICTED", 256, 110); sx.font = "700 34px 'Share Tech Mono', monospace"; sx.fillText("R&D · PAD 4 · NO ENTRY", 256, 180);
+  const st = new THREE.CanvasTexture(sign); st.colorSpace = THREE.SRGBColorSpace;
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: st, roughness: 0.6, side: THREE.DoubleSide }));
+  sm.position.set(ctr.x, floorY + 1.45, ctr.z + L / 2 + 1.7); grp.add(sm);
+  const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 8), dark); sp.position.set(ctr.x, floorY + 0.7, ctr.z + L / 2 + 1.7); grp.add(sp);
+  return grp;
+}

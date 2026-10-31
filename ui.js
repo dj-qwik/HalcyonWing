@@ -470,10 +470,13 @@ Object.assign(STAGES, {
     const R = ROOMS.buildHangar(C.world, false); C.indoor = true;
     const types = ["kestrel", "lancer", "warden", "wraith", "longbow"]; const ships = [];
     types.forEach((t, i) => { const p = R.pads[i]; const s = put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); ships.push({ t, s }); });   // nose to the camera, a slight splay
+    // a prototype the player isn't cleared for stays under R&D's tarp
+    const secret = new Set(["wraith"].filter(t => !unlockedShips(camp).includes(t)));
+    for (const sh of ships) if (secret.has(sh.t)) { sh.s.obj.updateMatrixWorld(true); const tp = ROOMS.makeTarp(sh.s.obj); C.world.add(tp); sh.s.obj.visible = false; sh.secret = true; sh.s.eng = []; }
     const deck = place("rabbit", [4.5, 0, -6], -0.6, "armsCrossed");
     const home = { pos: new V3(0, 17, 31), look: new V3(0, 0, -12) }; C.camera.fov = 58; C.camera.updateProjectionMatrix(); const cam = camRig(home.pos, home.look);
     const st = { cam, home };
-    setHotspots([...ships.map(({ t, s }) => ({ label: SHIPS[t].name, sub: SHIPS[t].cls, pos: () => s.obj.position.clone().add(new V3(0, 4.5, 0)), act: () => { const p = s.obj.position; st.cam.go(p.clone().add(new V3(9, 4, 11)), p.clone().add(new V3(-2, 0.5, 0)), 2); st.focus = true; hubPanel("ship", t); } })),
+    setHotspots([...ships.map(({ t, s, secret }) => secret ? { label: "R&D", sub: "Restricted", pos: () => s.obj.position.clone().add(new V3(0, 4.5, 0)), act: () => toast("RESTRICTED — R&D PROTOTYPE. Not cleared for this pilot.", 2600) } : ({ label: SHIPS[t].name, sub: SHIPS[t].cls, pos: () => s.obj.position.clone().add(new V3(0, 4.5, 0)), act: () => { const p = s.obj.position; st.cam.go(p.clone().add(new V3(9, 4, 11)), p.clone().add(new V3(-2, 0.5, 0)), 2); st.focus = true; hubPanel("ship", t); } })),
       { label: "Lounge", sub: "Back", door: 1, pos: new V3(-6, 3, 20), act: () => { $("hubPanel").hidden = true; toHub(); } }]);
     st.panelClosed = () => { st.focus = false; st.cam.go(home.pos, home.look, 2); };
     Object.assign(st, { update(t, dt) { if (!st.focus) st.cam.go(home.pos.clone().add(new V3(Math.sin(t * 0.07) * 4, 0, 0)), home.look, 1); st.cam.update(dt); if (deck) updateFigure(deck, t, dt, 0, C.camera, 0); for (const { s } of ships) glowEngines(s, 0.25); updateHotspots(!$("hubPanel").hidden); }, done() { $("hotspots").innerHTML = ""; HS = []; } });

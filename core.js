@@ -493,7 +493,7 @@ export const ACTIONS = [
   ["pitchDown", "Nose down", "Flight", 1], ["pitchUp", "Nose up", "Flight", 1], ["yawLeft", "Yaw left", "Flight", 1], ["yawRight", "Yaw right", "Flight", 1],
   ["rollLeft", "Roll left", "Flight", 1], ["rollRight", "Roll right", "Flight", 1], ["thrUp", "Throttle up", "Flight", 1], ["thrDn", "Throttle down", "Flight", 1],
   ["ab", "Afterburner", "Flight", 1], ["slide", "Slide (drift)", "Flight", 1], ["match", "Match target speed", "Flight"], ["stop", "Full stop", "Flight"],
-  ["fire", "Fire guns", "Weapons", 1], ["missile", "Launch missile", "Weapons"], ["cycGun", "Gun mode", "Weapons"], ["cycMis", "Cycle missiles", "Weapons"], ["decoy", "Drop decoy", "Weapons"],
+  ["fire", "Fire guns", "Weapons", 1], ["missile", "Launch missile", "Weapons"], ["cycGun", "Gun mode (full · seq · each type)", "Weapons"], ["cycMis", "Cycle missiles", "Weapons"], ["decoy", "Drop decoy", "Weapons"],
   ["tgtNext", "Next target", "Targeting"], ["tgtPrev", "Previous target", "Targeting"], ["tgtNear", "Nearest enemy", "Targeting"],
   ["comms", "Comms menu", "Ship"], ["auto", "Autopilot", "Ship"], ["land", "Request landing", "Ship"], ["cloak", "Cloak", "Ship"], ["eject", "Eject", "Ship"],
   ["view", "Cockpit / chase view", "Camera"], ["look", "Look behind", "Camera", 1], ["pause", "Pause", "System"], ["fullscreen", "Fullscreen", "System"],
@@ -897,7 +897,10 @@ function fireGuns(s, inheritVel) {
   if (s.gunCd > 0 || s.cloaked) return false;
   const usable = s.guns.filter(g => g.ok);
   if (!usable.length) return false;
-  const list = s.gunMode === 0 ? usable : [usable[s.gunAlt++ % usable.length]];
+  let list;
+  if (!s.gunMode) list = usable;
+  else if (s.gunMode === 1) list = [usable[s.gunAlt++ % usable.length]];
+  else { const t = gunTypes(s)[s.gunMode - 2]; list = usable.filter(g => g.type === t); if (!list.length) return false; }   // that gun type knocked out: nothing to fire
   let cost = list.reduce((a, g) => a + GUNS[g.type].energy, 0);
   if (s.energy < cost) return false;
   s.energy -= cost;
@@ -915,7 +918,7 @@ function fireGuns(s, inheritVel) {
     if (amb) { bolt.dmg *= 2.2; bolt.m.scale.multiplyScalar(1.6); }
     spawnPart(o, s.vel, 0.06 + sz * 0.02, 1.5 * sz * (amb ? 1.6 : 1), 3 * sz * (amb ? 1.6 : 1), GUNS[g.type].color, 0x000000, 1, true);
   }
-  s.gunCd = Math.max(...list.map(g => GUNS[g.type].rof)) * (s.gunMode === 0 ? 1 : 0.5);
+  s.gunCd = Math.max(...list.map(g => GUNS[g.type].rof)) * (s.gunMode === 1 ? 0.5 : 1);
   if (s.isPlayer) { C.stats.shots += list.length; sfx.gun(list[0].type);
     // recoil: heavier guns shove the nose and rattle the cockpit harder
     const heft = list.reduce((a, g) => a + GUNS[g.type].dmg * GUNS[g.type].size, 0) * (amb ? 1.6 : 1);
@@ -1066,6 +1069,10 @@ function drawCrack(x, cx, cy, r, seed) {
   x.fillStyle = "rgba(255,255,255,.65)"; x.beginPath(); x.arc(cx, cy, Math.max(3, r * 0.045), 0, 7); x.fill();
   x.fillStyle = "rgba(20,24,30,.55)"; x.beginPath(); x.arc(cx, cy, Math.max(1.5, r * 0.02), 0, 7); x.fill();
 }
+// gun modes: FULL, SEQUENCE, then one mode per distinct gun type on the ship (e.g. MASS ONLY, LASER ONLY)
+function gunTypes(s) { return [...new Set(s.guns.map(g => g.type))]; }
+function gunModeName(s) { const m = s.gunMode || 0; if (m === 0) return "FULL"; if (m === 1) return "SEQUENCE"; const t = gunTypes(s)[m - 2]; return t ? GUNS[t].name.toUpperCase() + " ONLY" : "FULL"; }
+function gunModeShort(s) { const m = s.gunMode || 0; if (m === 0) return "FULL"; if (m === 1) return "SEQ"; const t = gunTypes(s)[m - 2]; return t ? GUNS[t].name.split(" ")[0].toUpperCase() : "FULL"; }
 export function damage(t, amt, at, src, kind = "gun") {
   if (!t.alive) return;
   if (t.comp) { t.hp -= amt; spawnPart(at, tv(), 0.3, 3, 8, 0xffd080, 0x803010, 1, true); if (t.hp <= 0) killComp(t, src); return; }
@@ -1384,7 +1391,7 @@ function playerUpdate(dt, ctl) {
   if (ctl.match && C.target && C.target.speed !== undefined) { s.setSpeed = clamp(C.target.speed, 0, s.def.speed * K); C.msgs.push({ t: 1.5, text: "SPEED MATCHED" }); }
   // weapons
   if (ctl.fire && !s.cloaked && fireGuns(s)) { }
-  if (ctl.cycGun) { s.gunMode = 1 - s.gunMode; C.msgs.push({ t: 1.5, text: s.gunMode === 0 ? "GUNS: FULL" : "GUNS: SEQUENCE" }); sfx.cue("u_gunmode", 0.5, {}, 660); }
+  if (ctl.cycGun) { const n = 2 + (gunTypes(s).length > 1 ? gunTypes(s).length : 0); s.gunMode = ((s.gunMode || 0) + 1) % n; C.msgs.push({ t: 1.5, text: "GUNS: " + gunModeName(s) }); sfx.cue("u_gunmode", 0.5, {}, 660); }
   if (ctl.cycMis) { const keys = Object.keys(s.mis).filter(k => s.mis[k] > 0); if (keys.length) { s.misSel = keys[(keys.indexOf(s.misSel) + 1) % keys.length]; s.lock.t = 0; sfx.cue("u_missel", 0.5, {}, 990); } }
   if (s.misSel && !(s.mis[s.misSel] > 0)) { const keys = Object.keys(s.mis).filter(k => s.mis[k] > 0); s.misSel = keys[0] || s.misSel; }
   updLock(dt);
@@ -1859,8 +1866,8 @@ function drawVDUs(xL, xR, L, R) {
   x.fillStyle = AMBER; x.textAlign = "left";
   const tx = R.x + R.w * 0.56; let ty = R.y + 10;
   x.fillText(pl.def.name.split(" ").pop().toUpperCase(), R.x + 10, R.y + 8);
-  x.fillText(`GUNS ${pl.gunMode === 0 ? "FULL" : "SEQ"}`, tx, ty); ty += lh;
-  x.fillText(GUNS[pl.guns[0].type].name.split(" ")[0].toUpperCase(), tx, ty); ty += lh * 1.3;
+  x.fillText(`GUNS ${gunModeShort(pl)}`, tx, ty); ty += lh;
+  { const ts = pl.gunMode >= 2 ? [gunTypes(pl)[pl.gunMode - 2]] : gunTypes(pl); x.fillText(ts.map(t => GUNS[t].name.split(" ")[0].toUpperCase()).join("+"), tx, ty); } ty += lh * 1.3;
   for (const [k, n] of Object.entries(pl.mis)) { x.fillStyle = k === pl.misSel ? "#fff" : DIM; x.fillText(`${k === pl.misSel ? "▶" : " "}${MISSILES[k].short} ×${n}`, tx, ty); ty += lh; }
   x.fillStyle = AMBER; x.fillText(`DECOY ×${pl.decoys}`, tx, ty); ty += lh;
   const dmgs = Object.keys(pl.dmg); if (dmgs.length) { x.fillStyle = RED; x.fillText("DMG: " + dmgs.map(d => d.toUpperCase()).join(" "), R.x + 10, R.y + R.h - lh - 6); }

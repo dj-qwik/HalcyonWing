@@ -471,7 +471,7 @@ Object.assign(STAGES, {
     const types = ["kestrel", "lancer", "warden", "wraith", "longbow"]; const ships = [];
     types.forEach((t, i) => { const p = R.pads[i]; const s = put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); ships.push({ t, s }); });   // nose to the camera, a slight splay
     const deck = place("rabbit", [4.5, 0, -6], -0.6, "armsCrossed");
-    const home = { pos: new V3(0, 10, 26), look: new V3(0, 2, -14) }; const cam = camRig(home.pos, home.look);
+    const home = { pos: new V3(0, 17, 31), look: new V3(0, 0, -12) }; C.camera.fov = 58; C.camera.updateProjectionMatrix(); const cam = camRig(home.pos, home.look);
     const st = { cam, home };
     setHotspots([...ships.map(({ t, s }) => ({ label: SHIPS[t].name, sub: SHIPS[t].cls, pos: () => s.obj.position.clone().add(new V3(0, 4.5, 0)), act: () => { const p = s.obj.position; st.cam.go(p.clone().add(new V3(9, 4, 11)), p.clone().add(new V3(-2, 0.5, 0)), 2); st.focus = true; hubPanel("ship", t); } })),
       { label: "Lounge", sub: "Back", door: 1, pos: new V3(-6, 3, 20), act: () => { $("hubPanel").hidden = true; toHub(); } }]);

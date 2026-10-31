@@ -572,6 +572,7 @@ Object.assign(STAGES, {
   },
 });
 function setStage(name, arg) { if (name === "_keep" && stage) return; if (stage && stage.done) stage.done(); stage = STAGES[name](arg); stage.t = 0; stage.name = name;
+  const hd = $("hDeck"); if (hd) hd.textContent = name === "hangarRoom" ? "Back to Lounge" : "Flight Deck";
   try { C.renderer.compile(C.scene, C.camera); } catch (e) { }   // compile every shader now, so figures never pop in half-built on their first frame
 }
 
@@ -916,6 +917,10 @@ function deckBlurb() {
 $("hOpt").onclick = () => openSub("options", "hub");
 $("hQuit").onclick = () => { save(); toast("Campaign saved."); toTitle(); };
 $("hLog").onclick = () => hubPanel("log");
+// always-visible ways out of the lounge (the door hotspots sit behind the lounge camera)
+$("hBrief").onclick = () => { if (!camp) return; if (stage && stage.talkFig) endRoomTalk(stage); $("hubPanel").hidden = true; toBriefing(); };
+$("hDeck").onclick = () => { if (!camp) return; if (stage && stage.talkFig) endRoomTalk(stage); $("hubPanel").hidden = true;
+  if (stage && stage.name === "hangarRoom") toHub(); else { setStage("hangarRoom"); $("hubLoc").textContent = "Flight Deck"; } };
 $("hpClose").dataset.back = 1; $("hpClose").onclick = () => { $("hubPanel").hidden = true; if (stage && stage.panelClosed) stage.panelClosed(); };
 function hubPanel(v, arg) {
   const el = $("hubContent"); $("hubPanel").hidden = false;

@@ -130,7 +130,7 @@ export function addFlair(g, T, type, H) {
   const N = 140, dp = new Float32Array(N * 3), seeds = new Float32Array(N); const R = rnd(31);
   for (let i = 0; i < N; i++) { dp[i * 3] = (R() - 0.5) * 1.6; dp[i * 3 + 1] = -0.4 + R() * 1.1; dp[i * 3 + 2] = -1.45 + R() * 1.0; seeds[i] = R() * 100; }
   const dg = new THREE.BufferGeometry(); dg.setAttribute("position", new THREE.BufferAttribute(dp, 3));
-  const dust = new THREE.Points(dg, new THREE.PointsMaterial({ color: 0xffe8c8, size: 0.0035, sizeAttenuation: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); g.add(dust);
+  const dust = new THREE.Points(dg, new THREE.PointsMaterial({ color: 0xffe8c8, size: 0.0035, sizeAttenuation: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); dust.visible = false; g.add(dust);   // removed: the motes read as specks over everything
 
   // ---------------------------------------------------------------- per-frame
   const st = { ax: 0.05, az: -0.04, vx: 0, vz: 0, tw: 0.3, tv: 0, lastV: null, lastAv: new V3(), acc: new V3(), flick: 0, base: lamp.intensity, t: 0 };
@@ -148,7 +148,7 @@ export function addFlair(g, T, type, H) {
     const a = st.acc;
     // dust: slow brownian drift, pushed by manoeuvres, wrapped in the cabin volume
     const p = dg.attributes.position;
-    for (let i = 0; i < N; i++) {
+    for (let i = 0; dust.visible && i < N; i++) {
       const s = seeds[i];
       let x = p.getX(i) + (Math.sin(st.t * 0.31 + s) * 0.006 - a.x * 0.0004) * dt * 4, y = p.getY(i) + (Math.cos(st.t * 0.23 + s * 1.7) * 0.005 - 0.002 - a.y * 0.0004) * dt * 4, z = p.getZ(i) + (Math.sin(st.t * 0.17 + s * 2.3) * 0.005 - a.z * 0.0004) * dt * 4;
       if (y < -0.45) y += 1.1; if (y > 0.7) y -= 1.1; if (x < -0.8) x += 1.6; if (x > 0.8) x -= 1.6; if (z < -1.45) z += 1.0; if (z > -0.45) z -= 1.0;

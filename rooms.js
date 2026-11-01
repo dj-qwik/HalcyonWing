@@ -162,7 +162,13 @@ export function buildLounge(parent) {
   box(0.4, 2.0, 4.4, darkM, [6.75, 1.6, -1.3], g);
   const backlight = box(0.02, 1.4, 4.0, new THREE.MeshBasicMaterial({ color: 0x8a4a22 }), [6.54, 1.75, -1.3], g);
   const R = rnd(3);
-  for (let row = 0; row < 3; row++) { box(0.35, 0.03, 4.2, shelfM, [6.4, 1.15 + row * 0.5, -1.3], g); for (let i = 0; i < 12; i++) { const col = new THREE.Color().setHSL(R() * 0.15 + (R() < 0.3 ? 0.5 : 0), 0.7, 0.35); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.26 + R() * 0.12, 10), new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.05, transmission: 0.0, transparent: true, opacity: 0.85, emissive: col, emissiveIntensity: 0.25 })); b.position.set(6.4 + (R() - 0.5) * 0.1, 1.3 + row * 0.5, -3.2 + i * 0.34); g.add(b); } }
+  // 36 bottles in one instanced draw (was 36 meshes + materials); per-bottle colour drives both tint and glow
+  const bottleM = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, transmission: 0.0, transparent: true, opacity: 0.85, emissive: 0xffffff, emissiveIntensity: 0.25 });
+  bottleM.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace("vec3 totalEmissiveRadiance = emissive;", "vec3 totalEmissiveRadiance = emissive * vColor;"); };
+  bottleM.customProgramCacheKey = () => "bottleGlow";
+  const bottles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 1, 10), bottleM, 36); let bi = 0; const bm = new THREE.Matrix4(), bq = new THREE.Quaternion();
+  for (let row = 0; row < 3; row++) { box(0.35, 0.03, 4.2, shelfM, [6.4, 1.15 + row * 0.5, -1.3], g); for (let i = 0; i < 12; i++) { const col = new THREE.Color().setHSL(R() * 0.15 + (R() < 0.3 ? 0.5 : 0), 0.7, 0.35); const hgt = 0.26 + R() * 0.12; bm.compose(new THREE.Vector3(6.4 + (R() - 0.5) * 0.1, 1.3 + row * 0.5, -3.2 + i * 0.34), bq, new THREE.Vector3(1, hgt, 1)); bottles.setMatrixAt(bi, bm); bottles.setColorAt(bi, col); bi++; } }
+  g.add(bottles);
   for (let i = 0; i < 4; i++) { const st = new THREE.Group(); st.position.set(3.75, 0, -2.8 + i * 1.0); g.add(st); const s = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 20), pad); s.position.y = 0.78; st.add(s); const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 8), metal); p2.position.y = 0.38; st.add(p2); const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.03, 16), metal); st.add(b2); }
   // tables
   const tables = [[-3.2, -2.2], [-0.6, -3.4], [-3.4, 1.2]];

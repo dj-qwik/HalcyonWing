@@ -438,8 +438,10 @@ export function buildCockpit(type = "kestrel") {
 // ---------------------------------------------------------------- live instrument painting
 export function paintLights(ck, st, t) {
   const L = ck.userData.D.lights; if (!L) return; const x = L.ctx, w = L.canvas.width, h = L.canvas.height;
-  x.fillStyle = "#050505"; x.fillRect(0, 0, w, h);
   const items = [["EJECT", st.eject, "#ff2010"], ["AUTO", st.auto, "#40ff60"], ["LOCK", st.lock, "#ffb040"], ["MSL", st.missile && Math.floor(t * 6) % 2, "#ff2010"], ["A/B", st.ab, "#40c0ff"], ["SHLD", st.shield, "#ff8020"], ["CLOAK", st.cloak, "#80e0ff"]];
+  // only repaint (and re-upload) when a lamp actually changes state
+  const key = (ck.userData.power > 0.5 ? "1" : "0") + items.map(it => it[1] ? 1 : 0).join(""); if (L._key === key) return; L._key = key;
+  x.fillStyle = "#050505"; x.fillRect(0, 0, w, h);
   const bw = w / items.length;
   items.forEach(([lbl, on, col], i) => {
     const p = ck.userData.power;
@@ -452,6 +454,8 @@ export function paintReadouts(ck, st) {
   const D = ck.userData.D, p = ck.userData.power;
   for (const [key, lines] of [["speed", [["SET", st.set], ["KPS", st.kps]]], ["energy", [["GUN", st.gun], ["FUEL", st.fuel]]]]) {
     const R = D[key]; if (!R) continue; const x = R.ctx, w = R.canvas.width, h = R.canvas.height;
+    const k = p < 0.3 ? "off" : lines.map(([, v]) => key === "speed" ? Math.round(v) : Math.round(Math.max(0, Math.min(1, v)) * 256) + (v > 0.3 ? "" : "!")).join("/");
+    if (R._key === k) continue; R._key = k;   // unchanged readout: no repaint, no texture upload
     x.fillStyle = "#020302"; x.fillRect(0, 0, w, h); if (p < 0.3) { R.tex.needsUpdate = true; continue; }
     x.font = "bold 36px 'Share Tech Mono', monospace"; x.textBaseline = "middle";
     lines.forEach(([lbl, v], i) => {

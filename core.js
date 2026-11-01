@@ -17,6 +17,12 @@ THREE.Material.prototype.onBeforeCompile = function (sh) {
   const bias = Math.max(1, -(this.polygonOffsetUnits || 0) - (this.polygonOffsetFactor || 0)) * 2.5e-6;
   sh.fragmentShader = sh.fragmentShader.replace("#include <logdepthbuf_fragment>", "#include <logdepthbuf_fragment>\n#ifdef USE_LOGDEPTHBUF\ngl_FragDepth -= " + bias.toExponential(3) + ";\n#endif");
 };
+// Lighting cost: the stock shader runs the full BRDF for every point/spot light at every pixel, even when the light is
+// switched off or the pixel is beyond its range (attenuation already made it exactly zero). Rooms carry 11-25 lights,
+// so skip that work when the light contributes nothing. Identical image; a coherent branch on the GPU.
+THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin.split(
+  "RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );").join(
+  "if ( directLight.visible ) RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );");
 THREE.Material.prototype.customProgramCacheKey = function () { return this.polygonOffset ? "po" + this.polygonOffsetUnits + "/" + this.polygonOffsetFactor : ""; };
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const K = 0.5;               // world units per second per KPS
@@ -29,7 +35,7 @@ const pick = a => a[(Math.random() * a.length) | 0];
 
 export const C = {
   state: "menu", t: 0, paused: false, opts: { invert: false, mouseInvert: false, voice: true, music: 0.5, sfx: 0.8, difficulty: 1, sens: 1,
-    quality: "high", fov: 72, bright: 1, bloom: 1, shake: 1, fps: false, master: 1, voiceVol: 1, deadzone: 0.14, vibration: true, hud: 1 },
+    quality: "high", dynRes: true, fov: 72, bright: 1, bloom: 1, shake: 1, fps: false, master: 1, voiceVol: 1, deadzone: 0.14, vibration: true, hud: 1 },
   ents: [], bolts: [], missiles: [], decoys: [], parts: [], comms: [], msgs: [],
   player: null, target: null, mission: null, navIdx: 0, navT: 0,
   hooks: {},
@@ -37,7 +43,7 @@ export const C = {
 
 // ======================================================================= RENDERER
 export function init(container) {
-  const r = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+  const r = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true, powerPreference: "high-performance" });   // AA lives in the composer's multisampled targets; MSAA on the canvas itself was pure overhead
   // if the GPU driver drops the 3D context, say so, step quality down and restart, instead of leaving a dead white canvas
   r.domElement.addEventListener("webglcontextlost", e => { e.preventDefault(); onGpuLost(); }, false);
   r.domElement.addEventListener("webglcontextrestored", () => location.reload(), false);
@@ -107,12 +113,30 @@ function onGpuLost() {
 export function applyQuality(first) {
   const q = QUALITY[C.opts.quality] || QUALITY.high, r = C.renderer; if (!r) return;
   const dpr = window.devicePixelRatio || 1;
-  r.setPixelRatio(q.pr < 1 ? Math.min(dpr, 1) * q.pr : Math.min(dpr, q.pr));
+  C.basePR = q.pr < 1 ? Math.min(dpr, 1) * q.pr : Math.min(dpr, q.pr);
+  setRenderScale(C.drs ? C.drs.scale : 1, true);
   const maxS = r.capabilities.maxSamples || 4, n = Math.min(q.msaa, maxS);
   for (const rt of [C.composer.renderTarget1, C.composer.renderTarget2]) if (rt.samples !== n) { rt.samples = n; rt.dispose(); }
   r.toneMappingExposure = 1.05 * (C.opts.bright || 1);
   M.setBakeSize(q.bake); C.skyRes = q.sky;
   if (!first) { resize(); if (C.skyCache) { for (const [k, v] of [...C.skyCache]) if (v.bg !== C.scene.background) { v.env.dispose(); v.rt.dispose(); C.skyCache.delete(k); } } }
+}
+// resolution the 3D scene renders at = quality preset x dynamic scale. The composer (which does all the 3D drawing)
+// must be told too: it keeps its own pixel ratio, so before this the preset never reached the 3D render.
+function setRenderScale(scale, noResize) {
+  const r = C.renderer; if (!r || !C.basePR) return; const pr = Math.max(0.4, C.basePR * scale);
+  if (Math.abs(r.getPixelRatio() - pr) < 1e-3 && C.composer._pixelRatio === pr) return;
+  r.setPixelRatio(pr); C.composer.setPixelRatio(pr); if (!noResize) resize();
+}
+// dynamic resolution: hold 60 fps by trading a little sharpness when the GPU falls behind, and win it back when it doesn't
+function dynRes(frameMs) {
+  if (C.opts.dynRes === false || document.hidden || frameMs > 250) return;
+  const D = C.drs || (C.drs = { scale: 1, sum: 0, n: 0, t: 0, ceil: 1, ceilT: 0 });
+  D.sum += frameMs; D.n++; D.t += frameMs; if (D.t < 1200) return;
+  const avg = D.sum / D.n; D.sum = 0; D.n = 0; D.t = 0; const now = performance.now();
+  if (now > D.ceilT) D.ceil = 1;
+  if (avg > 18.2 && D.scale > 0.6) { D.ceil = D.scale; D.ceilT = now + 30000; D.scale = Math.max(0.6, +(D.scale - (avg > 25 ? 0.15 : 0.08)).toFixed(2)); setRenderScale(D.scale); }
+  else if (avg < 17.4 && D.scale < Math.min(1, D.ceil - 0.01)) { D.scale = Math.min(1, D.ceil - 0.01, +(D.scale + 0.04).toFixed(2)); setRenderScale(D.scale); }
 }
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -209,27 +233,66 @@ export function buildNavEnv(env) {
 }
 
 // ======================================================================= PARTICLES / BOLTS / DUST
+// One instanced draw for every live particle (was one sprite + material + draw call each). Reproduces the
+// sprite look exactly: camera-facing quad, random spin, glow/puff texture, colour c0->c1, size s0->s1, additive.
+const PMAX = 900;
+const P_VS = `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+attribute vec3 iPos; attribute vec4 iCol; attribute vec3 iMisc;   // iCol.a = alpha; iMisc = size, spin, texture (0 puff / 1 glow)
+varying vec2 vUv; varying vec4 vCol; varying float vTex;
+void main() {
+  vUv = uv; vCol = iCol; vTex = iMisc.z;
+  vec4 mvPosition = modelViewMatrix * vec4(iPos, 1.0);
+  float c = cos(iMisc.y), s = sin(iMisc.y); vec2 q = position.xy * iMisc.x;
+  mvPosition.xy += vec2(c * q.x - s * q.y, s * q.x + c * q.y);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <logdepthbuf_vertex>
+}`;
+const P_FS = `
+uniform sampler2D tPuff; uniform sampler2D tGlow;
+varying vec2 vUv; varying vec4 vCol; varying float vTex;
+#include <logdepthbuf_pars_fragment>
+void main() {
+  #include <logdepthbuf_fragment>
+  vec4 t = vTex > 0.5 ? texture2D(tGlow, vUv) : texture2D(tPuff, vUv);
+  gl_FragColor = vec4(vCol.rgb, vCol.a) * t;
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
 function initParticles() {
+  const g = new THREE.InstancedBufferGeometry(); const quad = new THREE.PlaneGeometry(1, 1);
+  g.index = quad.index; g.setAttribute("position", quad.attributes.position); g.setAttribute("uv", quad.attributes.uv);
+  const aPos = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 3), 3), aCol = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 4), 4), aMisc = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 3), 3);
+  for (const a of [aPos, aCol, aMisc]) a.setUsage(THREE.DynamicDrawUsage);
+  g.setAttribute("iPos", aPos); g.setAttribute("iCol", aCol); g.setAttribute("iMisc", aMisc); g.instanceCount = 0;
+  const mat = new THREE.ShaderMaterial({ vertexShader: P_VS, fragmentShader: P_FS, uniforms: { tPuff: { value: M.tex().puff }, tGlow: { value: M.tex().glow } },
+    blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.renderOrder = 1; C.scene.add(mesh);
+  C.partMesh = mesh; C.partAttr = { aPos, aCol, aMisc };
   C.pool = [];
-  for (let i = 0; i < 900; i++) {
-    const m = new THREE.SpriteMaterial({ map: M.tex().puff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
-    const s = new THREE.Sprite(m); s.visible = false; C.scene.add(s); C.pool.push({ s, life: 0, max: 1, v: new V3(), s0: 1, s1: 2, c0: new THREE.Color(), c1: new THREE.Color(), a: 1 });
-  }
+  for (let i = 0; i < PMAX; i++) C.pool.push({ pos: new V3(), life: 0, max: 1, v: new V3(), s0: 1, s1: 2, c0: new THREE.Color(), c1: new THREE.Color(), a: 1, rot: 0, glow: false });
   C.pi = 0;
 }
 function spawnPart(pos, vel, life, s0, s1, c0, c1, a = 1, glow = false) {
   const p = C.pool[C.pi = (C.pi + 1) % C.pool.length];
-  p.s.visible = true; p.s.position.copy(pos); p.v.copy(vel); p.life = p.max = life; p.s0 = s0; p.s1 = s1; p.c0.set(c0); p.c1.set(c1); p.a = a;
-  p.s.material.map = glow ? M.tex().glow : M.tex().puff; p.s.material.blending = THREE.AdditiveBlending; p.s.material.rotation = Math.random() * 6;
+  p.pos.copy(pos); p.v.copy(vel); p.life = p.max = life; p.s0 = s0; p.s1 = s1; p.c0.set(c0); p.c1.set(c1); p.a = a; p.glow = glow; p.rot = Math.random() * 6;
   return p;
 }
+const _pc = new THREE.Color();
 export function updParticles(dt) {
+  const { aPos, aCol, aMisc } = C.partAttr, P = aPos.array, Cl = aCol.array, Mi = aMisc.array; let n = 0;
   for (const p of C.pool) {
     if (p.life <= 0) continue;
-    p.life -= dt; if (p.life <= 0) { p.s.visible = false; continue; }
-    const k = 1 - p.life / p.max; p.s.position.addScaledVector(p.v, dt); p.v.multiplyScalar(1 - dt * 0.6);
-    p.s.scale.setScalar(p.s0 + (p.s1 - p.s0) * k); p.s.material.color.copy(p.c0).lerp(p.c1, k); p.s.material.opacity = p.a * (1 - k * k);
+    p.life -= dt; if (p.life <= 0) continue;
+    const k = 1 - p.life / p.max; p.pos.addScaledVector(p.v, dt); p.v.multiplyScalar(1 - dt * 0.6);
+    _pc.copy(p.c0).lerp(p.c1, k);
+    P[n * 3] = p.pos.x; P[n * 3 + 1] = p.pos.y; P[n * 3 + 2] = p.pos.z;
+    Cl[n * 4] = _pc.r; Cl[n * 4 + 1] = _pc.g; Cl[n * 4 + 2] = _pc.b; Cl[n * 4 + 3] = p.a * (1 - k * k);
+    Mi[n * 3] = p.s0 + (p.s1 - p.s0) * k; Mi[n * 3 + 1] = p.rot; Mi[n * 3 + 2] = p.glow ? 1 : 0; n++;
   }
+  C.partMesh.geometry.instanceCount = n;
+  if (n) { for (const a of [aPos, aCol, aMisc]) { a.clearUpdateRanges ? (a.clearUpdateRanges(), a.addUpdateRange(0, n * a.itemSize)) : (a.updateRange.offset = 0, a.updateRange.count = n * a.itemSize); a.needsUpdate = true; } }
   for (const L of C.plights) if (L.life > 0) { L.life -= dt; L.l.intensity = Math.max(0, L.life) * L.k; }
 }
 export function explode(pos, size = 10, color = 0xffa040, vel) {
@@ -247,8 +310,17 @@ export function explode(pos, size = 10, color = 0xffa040, vel) {
 function initBolts() {
   C.boltGeo = new THREE.CylinderGeometry(0.22, 0.22, 1, 6); C.boltGeo.rotateX(Math.PI / 2);
   C.boltPool = [];
-  for (let i = 0; i < 500; i++) { const m = new THREE.Mesh(C.boltGeo, new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); m.visible = false; m.layers.set(0); C.scene.add(m); C.boltPool.push({ m, life: 0, pos: m.position, vel: new V3() }); }
+  // all bolts draw as one instanced mesh; each pool entry keeps a lightweight transform + colour that syncBolts() copies in
+  C.boltMesh = new THREE.InstancedMesh(C.boltGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 500);
+  C.boltMesh.frustumCulled = false; C.boltMesh.count = 0; C.boltMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  C.boltMesh.setColorAt(0, new THREE.Color(1, 1, 1)); C.boltMesh.instanceColor.setUsage(THREE.DynamicDrawUsage); C.scene.add(C.boltMesh);
+  for (let i = 0; i < 500; i++) { const m = new THREE.Object3D(); m.visible = false; m.material = { color: new THREE.Color(0xff3020) }; C.boltPool.push({ m, life: 0, pos: m.position, vel: new V3() }); }
   C.bi = 0;
+}
+function syncBolts() {
+  const I = C.boltMesh; if (!I) return; let n = 0;
+  for (const b of C.boltPool) { if (b.life <= 0 || !b.m.visible) continue; b.m.updateMatrix(); I.setMatrixAt(n, b.m.matrix); I.setColorAt(n, b.m.material.color); n++; }
+  I.count = n; if (n) { I.instanceMatrix.needsUpdate = true; I.instanceColor.needsUpdate = true; }
 }
 export function fireBolt(owner, origin, dir, gun, inherit) {
   const b = C.boltPool[C.bi = (C.bi + 1) % C.boltPool.length];
@@ -642,7 +714,7 @@ export function clearWorld(keepPlayer) {
   for (const b of C.boltPool) { b.life = 0; b.m.visible = false; }
   for (const m of C.missiles) C.world.remove(m.mesh); C.missiles = [];
   for (const d of C.decoys) C.world.remove(d.s); C.decoys = [];
-  for (const p of C.pool) { p.life = 0; p.s.visible = false; }
+  for (const p of C.pool) p.life = 0; if (C.partMesh) C.partMesh.geometry.instanceCount = 0;
   const keep = C.ents.map(e => e.obj);
   C.world.children.slice().forEach(ch => { if (!keep.includes(ch)) C.world.remove(ch); });
   C.target = null;
@@ -675,6 +747,7 @@ export function startMission(mission, camp, onEnd) {
   C.escorts = (mission.escort || []).map((e, i) => { const s = new Ship(e.type, "concord", { id: e.id, name: e.name }); s.escort = true; s.keep = true; s.slot = i; return addShip(s); });
   C.navIdx = 0; C.result = null; C.dead = false; C.view = "cockpit"; C.comms = []; C.curComm = null; C.msgs = []; C.finaleT = undefined; C.carrierLostT = 0; C.sparkDone = false; C.ghost = null; C.scriptHold = false; C.commsOpen = false; C.dyingCaps = []; C.debris = []; C.t = 0;
   loadNav(0, true);
+  prewarm(mission);
   C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1; clearCracks(); C.hitDirs = []; C.kick = null; C.shake = 0; C.ckDmg = null;   // fade in, so the frames before the cockpit camera settles in the tube never show
   sfx.play("tense");
 }
@@ -1582,6 +1655,16 @@ function boundKey(id) { const c = (binds.kb[id] || []).find(Boolean); if (!c) re
 // tell the player how to move on: the mission advances by autopilot, which isn't obvious to a newcomer
 // ---------- flying to the next nav point by hand (autopilot is the optional shortcut)
 const NAV_LEG = 7000;   // ~14 km on the HUD: about half a minute at cruise, a quarter of that on afterburner
+// compile every shader the mission will need while it fades in, so the first bandit, bolt or explosion doesn't hitch
+function prewarm(ms) {
+  try {
+    const types = new Set([ms.ship]); for (const n of ms.navs) { for (const g of n.groups || []) types.add(g.type); for (const f of n.friends || []) types.add(f.type); }
+    const tmp = new THREE.Group(); C.world.add(tmp);
+    for (const t of types) { if (!SHIPS[t]) continue; const m = M.buildShip(t); m.obj.position.set(0, -1e5, 0); tmp.add(m.obj); }
+    const cv = C.cockpit.visible; C.cockpit.visible = true; C.renderer.compile(C.scene, C.camera); C.cockpit.visible = cv;
+    C.world.remove(tmp); tmp.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+  } catch (e) { }
+}
 function setupNavBeacon(i) {
   const ms = C.mission, nav = ms.navs[i], next = ms.navs[i + 1];
   C.navBeacon = null; C.enroute = null;
@@ -1652,18 +1735,22 @@ function tryLanding(ask) {
 }
 
 // ======================================================================= MAIN LOOP
+// section timer: only active when C.prof is set (test harness), so it costs nothing in normal play
+const PT = { t: 0 }; function pt(name) { const P = C.prof; if (!P) return; const n = performance.now(); if (PT.name) P[PT.name] = (P[PT.name] || 0) + n - PT.t; PT.name = name; PT.t = n; }
 let last = performance.now();
 function loop() {
-  const now = performance.now();
+  const now = performance.now(); dynRes(now - last);
   if (C.opts.fps) { C._fc = (C._fc || 0) + 1; if (now - (C._ft || 0) > 500) { const el = document.getElementById("fpsMeter"); if (el) { el.textContent = Math.round(C._fc * 1000 / (now - (C._ft || now - 500))) + " FPS"; el.hidden = false; } C._fc = 0; C._ft = now; } } else if (C._ft) { const el = document.getElementById("fpsMeter"); if (el) el.hidden = true; C._ft = 0; } let dt = Math.min(C.dtCap || 0.05, (now - last) / 1000); last = now;
   pollPad();
   if (C.hooks.frame) C.hooks.frame(dt);
   const fl = ["flight", "auto", "landing", "launch"].includes(C.state);
+  pt("logic");
   if (fl && !C.paused) { C.t += dt; stepFlight(dt); }
   else if (C.state === "cine" && C.hooks.cine) C.hooks.cine(dt);
   else if (C.hooks.idle) C.hooks.idle(dt);
   if (fl) { const ctl = readControls(); if (ctl.pause && C.hooks.pause) C.hooks.pause(); if (ctl.fullscreen && C.hooks.fullscreen) C.hooks.fullscreen(); C.pendingCtl = ctl; } else consumeEdges();
   render(dt, fl && !!C.mission && ["flight", "auto", "landing", "launch"].includes(C.state));
+  pt(null); if (C.prof) C.prof.frames = (C.prof.frames || 0) + 1;
 }
 function stepFlight(dt) {
   const ctl = C.pendingCtl || readControls(); C.pendingCtl = null; if (C.botCtl) C.botCtl(ctl);   // test hook: lets an automated pilot fly the player
@@ -1722,6 +1809,7 @@ function stepFlight(dt) {
 
 // ======================================================================= CAMERA + RENDER
 function render(dt, flight) {
+  pt("renderPrep");
   const cam = C.camera;
   if (flight && C.player) {
     const pl = C.player;
@@ -1753,21 +1841,25 @@ function render(dt, flight) {
     }
     updDust();
     C.dust.visible = false;   // space dust removed: it read as square specks over the canopy and instruments
-    if (view === "cockpit") paintCockpit(dt);
+    pt("cockpitPaint"); if (view === "cockpit") paintCockpit(dt);
   }
   if (C.camLock) { cam.position.copy(C.camLock.pos); cam.up.set(0, 1, 0); cam.lookAt(C.camLock.look); if (C.camLock.fov) { cam.fov = C.camLock.fov; cam.updateProjectionMatrix(); } }
   if (C.sunFx) { C.sunFx.position.copy(cam.position).addScaledVector(_a.copy(C.sun.position).normalize(), 90000); C.sunFx.visible = C.sun.intensity > 0.2 && !C.indoor; }
   if (C.stars) { const u = C.stars.material.uniforms; u.uTime.value += dt; u.uScale.value = C.renderer.getPixelRatio() * Math.max(1, C.H / 1000); }
-  C.composer.render(dt);
+  syncBolts();
+  pt("render3d"); C.composer.render(dt);
+  pt("vdu");
   // target camera into the left screen (render target)
-  if (flight && C.view === "cockpit" && C.state === "flight" && C.player && C.target && C.target.alive && !commsActive() && !C.player.dmg.radar) {
+  C._vduAcc = (C._vduAcc || 0) + dt;   // the target camera is a second full-scene render: 30 Hz is plenty for a cockpit screen
+  if (flight && C.view === "cockpit" && C.state === "flight" && C.player && C.target && C.target.alive && !commsActive() && !C.player.dmg.radar && C._vduAcc >= 1 / 31) {
+    C._vduAcc = 0;
     const r = C.renderer, T = C.target; const vc = C.vduCam; const tp = T.pos; const rad = T.comp ? 20 : T.radius;
     const dir = _a.copy(C.player.pos).sub(tp).normalize();
     vc.position.copy(tp).addScaledVector(dir, rad * 3.2).addScaledVector(C.player.up(_b), rad * 0.8); vc.up.copy(C.player.up(_c)); vc.lookAt(tp);
     vc.aspect = 512 / 368; vc.far = 300000; vc.updateProjectionMatrix();
-    const pv = C.dust.visible; C.dust.visible = false; r.setRenderTarget(C.vduRT); r.clear(); r.render(C.scene, vc); r.setRenderTarget(null); C.dust.visible = pv;
+    const pv = C.dust.visible, cv = C.cockpit.visible; C.dust.visible = false; C.cockpit.visible = false; r.setRenderTarget(C.vduRT); r.clear(); r.render(C.scene, vc); r.setRenderTarget(null); C.dust.visible = pv; C.cockpit.visible = cv;
   }
-  drawHUD(flight);
+  pt("hud"); drawHUD(flight);
 }
 function keysLook() { return keys.has("KeyZ") || (pad.connected && pad.axes[3] > 0.85 && false); }
 function commsActive() { return C.curComm && C.curComm.t > 0 && C.curComm.who !== "player" && !C.player.dmg.comms; }
@@ -1819,7 +1911,7 @@ function paintCockpit(dt) {
   const def = MISSILES[pl.misSel];
   CK.paintLights(ck, { eject: pl.core < pl.coreMax * 0.35, auto: autoAvailable() && !C.mission.navs[C.navIdx].home, lock: !!(def && def.lock > 0 && pl.lock.tgt === C.target && pl.lock.t >= def.lock), missile: C.incoming > 0, ab: pl.abOn, shield: pl.sh[0] < pl.shMax[0] * 0.25 || pl.sh[1] < pl.shMax[1] * 0.25, cloak: pl.cloaked }, C.t);
   CK.paintReadouts(ck, { set: pl.setSpeed / K, kps: pl.speed / K, gun: pl.energy / pl.energyMax, fuel: pl.fuel / pl.fuelMax });
-  if (hdmg > 0.45 && D.lights && Math.random() < 0.18) { const lc = D.lights.ctx; lc.fillStyle = "rgba(0,0,0,.75)"; lc.fillRect(0, 0, D.lights.canvas.width, D.lights.canvas.height); D.lights.tex.needsUpdate = true; }
+  if (hdmg > 0.45 && D.lights && Math.random() < 0.18) { const lc = D.lights.ctx; lc.fillStyle = "rgba(0,0,0,.75)"; lc.fillRect(0, 0, D.lights.canvas.width, D.lights.canvas.height); D.lights.tex.needsUpdate = true; D.lights._key = null; }
   if (hdmg > 0.45 && C.view === "cockpit") {
     const eye = C.camera.getWorldPosition(new V3());
     if (Math.random() < dt * hdmg * 3.5) { const o = new V3((Math.random() - 0.5) * 1.1, -0.5 - Math.random() * 0.12, -0.75 - Math.random() * 0.2).applyQuaternion(pl.q).add(eye);

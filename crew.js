@@ -2,6 +2,7 @@
 // blinking, eye contact) on a posable flight-suit body. Built in MakeHuman units (~10 cm),
 // scaled to metres. Root sits at floor level; +Z is the direction the figure faces.
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { makeBust, poseBust, SUIT, fabricTex } from "./portraits.js";
 
 const V3 = THREE.Vector3;
@@ -41,6 +42,30 @@ function gloveHand(mat, s) {
   for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.42 - Math.abs(i - 1.5) * 0.06, 3, 8), mat); f.position.set((i - 1.5) * 0.115, -0.78, 0.05); f.rotation.x = 0.35; h.add(f); }
   const th = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.32, 3, 8), mat); th.position.set(s * -0.24, -0.38, 0.14); th.rotation.set(0.5, 0, s * 0.55); h.add(th);
   return h;
+}
+// Performance: a figure is ~50 small meshes riding on a dozen animated joints. Every rigid piece is baked into one
+// mesh per (joint, material), in that joint's space, so it still moves exactly as before but draws in a fraction
+// of the calls. The face rig (morphs, eyes, head turns) is left untouched.
+function mergeRigid(root, anchors, skip) {
+  const A = new Set(anchors.filter(Boolean)); root.updateMatrixWorld(true);
+  const inSkip = o => { for (let q = o; q; q = q.parent) if (q === skip) return true; return false; };
+  const buckets = new Map(), inv = new THREE.Matrix4();
+  root.traverse(o => {
+    if (!o.isMesh || A.has(o) || inSkip(o) || o.morphTargetInfluences || o.isSkinnedMesh || Array.isArray(o.material) || !o.visible) return;
+    let a = o.parent; while (a && !A.has(a)) a = a.parent; if (!a) return;
+    const k = a.uuid + "|" + o.material.uuid; let B = buckets.get(k); if (!B) { B = { a, mat: o.material, list: [] }; buckets.set(k, B); } B.list.push(o);
+  });
+  for (const B of buckets.values()) {
+    if (B.list.length < 2) continue;
+    inv.copy(B.a.matrixWorld).invert();
+    const geos = B.list.map(o => { let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); for (const k of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(k)) g.deleteAttribute(k);
+      if (!g.attributes.normal) g.computeVertexNormals(); if (!g.attributes.uv) g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      g.morphAttributes = {}; g.clearGroups(); return g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)); });
+    const merged = mergeGeometries(geos, false); if (!merged) continue;
+    const m = new THREE.Mesh(merged, B.mat); m.renderOrder = B.list[0].renderOrder; B.a.add(m);
+    // originals stop drawing; ones that carry child joints stay in the hierarchy on an unused layer
+    for (const o of B.list) { if (o.children.length) o.layers.set(31); else o.parent.remove(o); }
+  }
 }
 export function makeFigure(id, opts = {}) {
   const rig = makeBust(id); if (!rig) return null;
@@ -120,6 +145,7 @@ export function makeFigure(id, opts = {}) {
   }
   root.userData = { id, rig, L, body, pose: opts.pose || "stand", phase: Math.random() * 6, vh };
   setPose(root, root.userData.pose);
+  mergeRigid(root, [root, body, ...Object.values(L)], rig && rig.group);
   root.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
   return root;
 }

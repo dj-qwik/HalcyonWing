@@ -534,7 +534,7 @@ Object.assign(STAGES, {
     Object.assign(st, { update(t, dt) {
       st.cam.update(dt);
       for (const [k, f] of Object.entries(figs)) updateFigure(f, t, dt, st.talking === k ? Math.abs(Math.sin(t * 13)) * (0.6 + 0.4 * Math.sin(t * 3.1)) : 0, C.camera, k.startsWith("seat_") ? 0 : yawTo(f, C.camera.position) * 0.7);
-      pt += dt; if (pt > 1 / 20) { pt = 0; paintTactical(R.screen.canvas, ms, hl, t); R.screen.tex.needsUpdate = true; }
+      pt += dt; if (pt > 1 / 12) { pt = 0; paintTactical(R.screen.canvas, ms, hl, t); R.screen.tex.needsUpdate = true; }
     } });
     return st;
   },
@@ -803,7 +803,7 @@ function syncOpts() {
   const set = (id, v) => document.querySelectorAll(`#${id} .btn`).forEach(b => b.classList.toggle("on", String(b.dataset.v) === String(v)));
   const o = C.opts;
   set("oVoice", o.voice ? 1 : 0); set("oInv", o.invert ? 1 : 0); set("oMInv", o.mouseInvert ? 1 : 0); set("oMus", o.music); set("oSfx", o.sfx); set("oSens", o.sens);
-  set("oQual", o.quality || "high"); set("oFov", o.fov || 72); set("oBright", o.bright ?? 1); set("oShake", o.shake ?? 1); set("oFps", o.fps ? 1 : 0);
+  set("oQual", o.quality || "high"); set("oDyn", o.dynRes === false ? 0 : 1); set("oFov", o.fov || 72); set("oBright", o.bright ?? 1); set("oShake", o.shake ?? 1); set("oFps", o.fps ? 1 : 0);
   set("oMaster", o.master ?? 1); set("oVVol", o.voiceVol ?? 1); set("oDead", o.deadzone ?? 0.14); set("oVib", o.vibration === false ? 0 : 1);
   set("oDiff", camp ? (camp.diff || 1) : (o.difficulty || 1)); set("oAutoP", o.autoPause === false ? 0 : 1);
   // snap legacy values (older saves) onto the nearest button so a segment is always lit
@@ -813,6 +813,7 @@ const bindSeg = (id, fn) => document.querySelectorAll(`#${id} .btn`).forEach(b =
 bindSeg("oVoice", v => { C.opts.voice = v === "1"; if (!C.opts.voice) voice.stop(); });
 bindSeg("oInv", v => C.opts.invert = v === "1"); bindSeg("oMInv", v => C.opts.mouseInvert = v === "1");
 bindSeg("oMus", v => C.opts.music = +v); bindSeg("oSfx", v => { C.opts.sfx = +v; sfx.cue("u_confirm", 0.5, {}, 900, 0.04, 0.08); }); bindSeg("oSens", v => C.opts.sens = +v);
+bindSeg("oDyn", v => { C.opts.dynRes = v === "1"; if (!C.opts.dynRes && C.drs) { C.drs.scale = 1; applyQuality(); } });
 bindSeg("oQual", v => { C.opts.quality = v; applyQuality(); toast(`Graphics: ${v[0].toUpperCase() + v.slice(1)}. Planets and sky refresh on the next scene.`, 2600); });
 bindSeg("oFov", v => { C.opts.fov = +v; if (C.state === "flight" || C.state === "auto") { C.camera.fov = +v; C.camera.updateProjectionMatrix(); } });
 bindSeg("oBright", v => { C.opts.bright = +v; C.renderer.toneMappingExposure = 1.05 * C.opts.bright; });
@@ -1142,7 +1143,7 @@ $("kiaQuit").onclick = () => toTitle();
 // ======================================================================= SIMULATOR
 let attractAcc = 0;
 function paintSimAttract(S, t) {
-  attractAcc++; if (attractAcc % 3) return;
+  attractAcc++; if (attractAcc % 5) return;
   const x = S.canvas.getContext("2d"), W = S.canvas.width, H = S.canvas.height;
   x.fillStyle = "#020a06"; x.fillRect(0, 0, W, H);
   x.strokeStyle = "rgba(125,255,168,.25)"; x.lineWidth = 2; for (let i = 0; i < 9; i++) { const z = ((i / 9 + t * 0.15) % 1); const y = H * 0.55 + z * z * H * 0.45; x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); }

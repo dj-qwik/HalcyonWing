@@ -368,15 +368,23 @@ export function drawPortrait(ctx, spec, x, y, w, h, talk = 0, t = 0, opts = {}) 
   }
   let rig = rigs.get(id); if (!rig) { rig = buildRig(id); rigs.set(id, rig); }
   if (!rig) { ctx.restore(); return; }
-  pose(rig, talk, t);
-  keyL.color.set(vharr ? 0xffb080 : 0xffe2c8); keyL.intensity = vharr ? 2.2 : 2.7;
-  rimL.color.set(vharr ? 0xff6a20 : 0x9ccfff); rimL.intensity = vharr ? 6 : 5;
-  rim2.color.set(vharr ? 0xff3010 : 0x6a8ab8); fillL.intensity = vharr ? 0.4 : 0.6;
-  scene.add(rig.group); R.render(scene, cam); scene.remove(rig.group);
+  // the 3D head is re-rendered ~20x a second and cached: every render is a GPU->CPU copy, so callers painting
+  // at 30-60 Hz reuse the last frame in between (lip movement still reads smoothly at 20 fps)
+  const nowR = performance.now();
+  if (!rig._cv) { rig._cv = document.createElement("canvas"); rig._cv.width = W; rig._cv.height = H; rig._rt = -1e9; }
+  if (nowR - rig._rt > 48) {
+    rig._rt = nowR;
+    pose(rig, talk, t);
+    keyL.color.set(vharr ? 0xffb080 : 0xffe2c8); keyL.intensity = vharr ? 2.2 : 2.7;
+    rimL.color.set(vharr ? 0xff6a20 : 0x9ccfff); rimL.intensity = vharr ? 6 : 5;
+    rim2.color.set(vharr ? 0xff3010 : 0x6a8ab8); fillL.intensity = vharr ? 0.4 : 0.6;
+    scene.add(rig.group); R.render(scene, cam); scene.remove(rig.group);
+    const cx = rig._cv.getContext("2d"); cx.clearRect(0, 0, W, H); cx.drawImage(R.domElement, 0, 0);
+  }
   const sa = W / H, da = w / h; let sw = W, sh = H, sx = 0, sy = 0;
   if (da > sa) { sh = W / da; sy = (H - sh) * 0.25; } else { sw = H * da; sx = (W - sw) / 2; }
   const now = performance.now(); if (!rig._seen || now - rig._seen > 3000) { rig._fade0 = now; rig._fn = 0; } rig._seen = now; rig._fn = (rig._fn || 0) + 1;
-  ctx.globalAlpha = Math.min(1, Math.max((now - rig._fade0) / 380, rig._fn / 12)); ctx.drawImage(R.domElement, sx, sy, sw, sh, x, y, w, h); ctx.globalAlpha = 1;
+  ctx.globalAlpha = Math.min(1, Math.max((now - rig._fade0) / 380, rig._fn / 12)); ctx.drawImage(rig._cv, sx, sy, sw, sh, x, y, w, h); ctx.globalAlpha = 1;
   if (vharr) for (const e of rig.eyes) {
     const wp = new V3(); e.getWorldPosition(wp); const pr = wp.project(cam);
     const px = x + (((pr.x * 0.5 + 0.5) * W - sx) / sw) * w, py = y + (((-pr.y * 0.5 + 0.5) * H - sy) / sh) * h;

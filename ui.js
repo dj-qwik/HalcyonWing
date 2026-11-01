@@ -549,7 +549,7 @@ Object.assign(STAGES, {
     const crew = place("rabbit", [-4, 0, -4], 0.6, "point");
     const seat = can.userData.seat; let seated = true; if (me) { mine.obj.add(me); me.position.copy(seat); me.rotation.set(0, Math.PI, 0); }
     const cam = camRig(new V3(-16, 12, 26), new V3(0, 2, -6)); const st = { cam };
-    const glowL = new THREE.PointLight(0x7dffa8, 0, 4, 2); mine.obj.add(glowL); glowL.position.set(seat.x, seat.y + 1.2, seat.z - 0.6);
+    const glowL = new THREE.PointLight(0x7dffa8, 0, 2.2, 2); mine.obj.add(glowL); glowL.position.set(seat.x, seat.y + 0.7, seat.z - 0.9);   // dash glow on the pilot
     Object.assign(st, { update(t, dt) {
       for (const b of R.beacons) { const k = (Math.sin(t * 7 + b.l.position.x) * 0.5 + 0.5); b.l.intensity = k * 140; b.b.material.color.setRGB(0.4 + k * 0.6, 0.05, 0.02); }
       if (Math.floor(t * 1.25) !== st.kl) { st.kl = Math.floor(t * 1.25); sfx.cue("u_klaxon", 0.4, {}, 520, 0.35, 0.05, "sawtooth"); }
@@ -561,7 +561,7 @@ Object.assign(STAGES, {
       }
       if (crew) updateFigure(crew, t, dt, 0, C.camera, 0);
       if (t > 4.4) can.rotation.x = Math.max(0, 1.15 - (t - 4.4) * 0.7);   // swings down onto the cockpit
-      glowL.intensity = t > 5.8 ? Math.min(6, (t - 5.8) * 4) : 0;
+      glowL.intensity = t > 5.8 ? Math.min(0.9, (t - 5.8) * 0.8) : 0;
       const eng = t > 6.5 ? Math.min(1.4, (t - 6.5) * 0.9) : 0.05; glowEngines(mine, eng); others.forEach(o => glowEngines(o.s, eng));
       // camera choreography
       const P = mine.obj.position;
@@ -743,7 +743,7 @@ function syncOpts() {
   const set = (id, v) => document.querySelectorAll(`#${id} .btn`).forEach(b => b.classList.toggle("on", String(b.dataset.v) === String(v)));
   const o = C.opts;
   set("oVoice", o.voice ? 1 : 0); set("oInv", o.invert ? 1 : 0); set("oMInv", o.mouseInvert ? 1 : 0); set("oMus", o.music); set("oSfx", o.sfx); set("oSens", o.sens);
-  set("oQual", o.quality || "high"); set("oFov", o.fov || 72); set("oBright", o.bright ?? 1); set("oBloom", o.bloom ?? 1); set("oShake", o.shake ?? 1); set("oFps", o.fps ? 1 : 0);
+  set("oQual", o.quality || "high"); set("oFov", o.fov || 72); set("oBright", o.bright ?? 1); set("oShake", o.shake ?? 1); set("oFps", o.fps ? 1 : 0);
   set("oMaster", o.master ?? 1); set("oVVol", o.voiceVol ?? 1); set("oDead", o.deadzone ?? 0.14); set("oVib", o.vibration === false ? 0 : 1);
   set("oDiff", camp ? (camp.diff || 1) : (o.difficulty || 1)); set("oAutoP", o.autoPause === false ? 0 : 1);
   // snap legacy values (older saves) onto the nearest button so a segment is always lit
@@ -756,7 +756,7 @@ bindSeg("oMus", v => C.opts.music = +v); bindSeg("oSfx", v => { C.opts.sfx = +v;
 bindSeg("oQual", v => { C.opts.quality = v; applyQuality(); toast(`Graphics: ${v[0].toUpperCase() + v.slice(1)}. Planets and sky refresh on the next scene.`, 2600); });
 bindSeg("oFov", v => { C.opts.fov = +v; if (C.state === "flight" || C.state === "auto") { C.camera.fov = +v; C.camera.updateProjectionMatrix(); } });
 bindSeg("oBright", v => { C.opts.bright = +v; C.renderer.toneMappingExposure = 1.05 * C.opts.bright; });
-bindSeg("oBloom", v => C.opts.bloom = +v); bindSeg("oShake", v => C.opts.shake = +v); bindSeg("oFps", v => C.opts.fps = v === "1");
+bindSeg("oShake", v => C.opts.shake = +v); bindSeg("oFps", v => C.opts.fps = v === "1");
 bindSeg("oMaster", v => C.opts.master = +v); bindSeg("oVVol", v => { C.opts.voiceVol = +v; if (C.opts.voice) voice.say("player", "Volume check."); });
 bindSeg("oDead", v => C.opts.deadzone = +v); bindSeg("oVib", v => { C.opts.vibration = v === "1"; if (C.opts.vibration) rumbleTest(); });
 bindSeg("oDiff", v => { C.opts.difficulty = +v; if (camp) { camp.diff = +v; save(); } });

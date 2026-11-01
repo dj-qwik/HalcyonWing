@@ -266,6 +266,8 @@ function mats(fac, caps) {
   if (caps === 2) { metal.metalness = 0.55; metal.roughness = 0.45; metal.color.set(0x8c939c); dark.color.set(0x56606c); dark.metalness = 0.3; }
   const bayLt = new THREE.MeshBasicMaterial({ color: 0x8a96a6 });   // hangar fixtures: lit but well under the engines
   const bayIn = hull2.clone(); bayIn.emissive = new THREE.Color(0x1c242e); bayIn.emissiveMap = hull2.map || null; bayIn.emissiveIntensity = 1;   // hangar interiors are lit from within
+  // Vharr fighters glow faintly from within (bioluminescent hulls) so their shape reads against black space at range
+  if (fac !== "concord" && !caps) for (const m of [hull, hull2, dark, bone, accent, red]) { m.emissive = m.color.clone().multiplyScalar(m === bone ? 0.16 : 0.32); m.emissiveMap = m.map; m.emissiveIntensity = 1; }
   const set = { hull, hull2, dark, bone, metal, glass, glow, red, white, accent, decal, light, lightR, lightG, heat, orange, lit, bayIn, bayLt, rep };
   MATS[key] = set; return set;
 }
@@ -411,12 +413,12 @@ function missile(B, p, len = 2.6, r = 0.2, nose = "red") {
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; B.add(G.box(r * 0.12, r * 2.6, len * 0.16), "dark", [p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r, p[2] + len * 0.3], [0, 0, a]); }
   B.add(G.box(r * 0.8, r * 1.2, len * 0.5), "dark", [p[0], p[1] + r * 1.3, p[2]]);       // pylon
 }
-// build a ship with its canopy removed (glass, frame hoops and spine), leaving only the sill: for scenes where a
+// build a ship with its canopy removed (glass, sill, frame hoops and spine): for scenes where a
 // separate opening canopy is fitted
 let NO_CANOPY = false;
 export function buildShipOpen(type) { NO_CANOPY = true; try { return buildShip(type); } finally { NO_CANOPY = false; } }
 function canopy(B, p, sz, bows = 3) {
-  if (NO_CANOPY) { B.add(G.sph(1, 24, 12), "dark", [p[0], p[1] - sz[1] * 0.05, p[2]], [0, 0, 0], [sz[0] * 1.06, sz[1] * 0.3, sz[2] * 1.03]); return; }
+  if (NO_CANOPY) return;   // the hinged canopy fitted in the scene is the only thing over the cockpit
   B.add(G.sph(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), "glass", p, [0, 0, 0], sz);
   B.add(G.sph(1, 24, 12), "dark", [p[0], p[1] - sz[1] * 0.05, p[2]], [0, 0, 0], [sz[0] * 1.06, sz[1] * 0.3, sz[2] * 1.03]);
   for (let i = 0; i < bows; i++) { const z = p[2] + sz[2] * (-0.45 + i * 0.9 / Math.max(1, bows - 1)); const k = Math.sqrt(Math.max(0.05, 1 - ((z - p[2]) / sz[2]) ** 2)); B.add(G.torus(1, 0.045, 24), "dark", [p[0], p[1], z], [0, 0, 0], [sz[0] * k, sz[1] * k, 1]); }

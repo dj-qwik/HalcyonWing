@@ -2,7 +2,6 @@
 import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SHIPS, GUNS, MISSILES, CAST } from "./story.js";
 import * as M from "./models.js";
@@ -51,8 +50,7 @@ export function init(container) {
   // post chain renders into a multisampled target so every edge stays clean (MSAA set by the quality preset)
   C.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
   C.composer.addPass(new RenderPass(C.scene, C.camera));
-  C.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.85, 0.45, 0.9);
-  C.composer.addPass(C.bloom);
+  C.bloom = { strength: 0, enabled: false };   // bloom removed (cost fps for little gain); stub keeps old scene code harmless
   C.composer.addPass(new OutputPass());
   // lights (fixed count, never changes → no shader recompiles)
   C.sun = new THREE.DirectionalLight(0xfff2e0, 3.2); C.sun.position.set(-1, 0.6, 0.4); C.scene.add(C.sun);
@@ -246,7 +244,7 @@ function initBolts() {
 export function fireBolt(owner, origin, dir, gun, inherit) {
   const b = C.boltPool[C.bi = (C.bi + 1) % C.boltPool.length];
   const g = GUNS[gun];
-  b.life = g.range / (g.speed * K); b.owner = owner; b.team = owner.team; b.dmg = g.dmg; b.gun = g;
+  b.life = g.range / (g.speed * K); b.lock = null; b.owner = owner; b.team = owner.team; b.dmg = g.dmg; b.gun = g;
   b.vel.copy(dir).multiplyScalar(g.speed * K); if (inherit) b.vel.add(inherit);
   b.pos.copy(origin); b.m.visible = true; b.m.material.color.setHex(g.color).multiplyScalar(2.2);
   const len = 6 * g.size + 4; b.m.scale.set(g.size * 1.6, g.size * 1.6, len);
@@ -576,7 +574,13 @@ export class Ship {
     this.m = M.buildShip(modelKey); this.obj = this.m.obj; this.obj.userData.ship = this;
     C.world.add(this.obj);
     this.pos = this.obj.position; this.q = this.obj.quaternion; this.vel = tv(); this.av = tv();
-    this.radius = this.isCap ? this.m.radius : Math.max(5, this.def.size * 0.45);
+    // enemy fighters are drawn 3x larger so they read at range and present a fatter target
+    this.vis = (team === "vharr" && !this.isCap) ? 3 : 1; if (this.vis !== 1) this.obj.scale.setScalar(this.vis);
+    if (this.vis !== 1) {   // red running-light glint that never shrinks below a few pixels, so bandits read at range
+      this.glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: 0xff4030, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, opacity: 0.85 }));
+      this.glint.renderOrder = 5; this.obj.add(this.glint);
+    }
+    this.radius = this.isCap ? this.m.radius : Math.max(5, this.def.size * 0.45) * this.vis;
     if (this.isCap) {
       this.hullMax = this.hull = this.def.hull * (team === "vharr" ? (0.8 + 0.2 * C.opts.difficulty) : 1);
       const b = new THREE.Box3().setFromObject(this.obj); this.bmin = b.min.clone(); this.bmax = b.max.clone();
@@ -590,7 +594,7 @@ export class Ship {
       this.shMax = [...d.shield]; this.sh = [...d.shield]; this.arMax = [...d.armor]; this.ar = [...d.armor]; this.coreMax = this.core = d.core;
       if (team === "vharr" && !this.pilot) { const k = 0.75 + 0.25 * C.opts.difficulty; this.sh = this.sh.map(x => x * k); this.shMax = [...this.sh]; this.ar = this.ar.map(x => x * k); this.arMax = [...this.ar]; }
       this.energyMax = this.energy = d.energy; this.fuel = d.fuel || 100; this.fuelMax = this.fuel;
-      this.guns = d.guns.map((g, i) => ({ type: g, pos: this.m.guns[i % this.m.guns.length] || tv(), ok: true }));
+      this.guns = d.guns.map((g, i) => ({ type: g, pos: (this.m.guns[i % this.m.guns.length] || tv()).clone().multiplyScalar(this.vis), ok: true }));
       this.gunMode = 0; this.gunCd = 0; this.gunAlt = 0;
       this.mis = { ...(o.loadout || d.missiles) }; this.misSel = Object.keys(this.mis)[0] || null; this.decoys = d.decoys;
       this.speed = d.speed * K * 0.6; this.setSpeed = this.speed; this.vel.set(0, 0, -this.speed);
@@ -958,21 +962,25 @@ function fireGuns(s, inheritVel) {
   let cost = list.reduce((a, g) => a + GUNS[g.type].energy, 0);
   if (s.energy < cost) return false;
   s.energy -= cost;
-  const f = s.forward(_b);
+  const f = s.forward(new V3());
   const amb = s.isPlayer && s.ambushT > C.t;   // Wraith: fire within two seconds of decloaking hits far harder
   if (amb && !s._ambMsg) { s._ambMsg = 1; C.msgs.push({ t: 2, text: "AMBUSH STRIKE — DOUBLE DAMAGE" }); }
   // convergence for player
   let conv = 600; if (s.isPlayer && C.target && C.target.alive) conv = clamp(C.target.pos.distanceTo(s.pos), 120, 1400);
   for (const g of list) {
     const o = g.pos.clone().applyQuaternion(s.q).add(s.pos);
-    const aimP = _a.copy(s.pos).addScaledVector(f, conv);
-    const dir = aimP.sub(o).normalize();
+    const dir = new V3().copy(s.pos).addScaledVector(f, conv).sub(o).normalize();
+    let lock = null;
     if (!s.isPlayer) dir.add(new V3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(0.012 * (1.2 - s.ai.skill))).normalize();
     else if (C.target && C.target.alive && !C.target.isCap && !C.target.comp && !s.dmg.itts) {   // aim assist: within ~9 degrees of the lead pip, rounds bend onto it
       const lp = leadPoint(s, C.target, GUNS[g.type].speed * K).clone(), want = lp.sub(o).normalize(), ang = dir.angleTo(want);
-      if (ang < 0.16) dir.lerp(want, 0.85 * (1 - ang / 0.16) + 0.15).normalize();
+      // crosshair inside the lead box = guaranteed hit: every gun's round is put on the target
+      if (C.pipOn && C.pipTgt === C.target && C.t - (C.pipT || -9) < 0.25) { dir.copy(want); lock = C.target; }
+      else if (ang < 0.16) dir.lerp(want, 0.85 * (1 - ang / 0.16) + 0.15).normalize();
     }
     const bolt = fireBolt(s, o, dir, g.type, inheritVel || s.vel), sz = GUNS[g.type].size;
+    if (s.isPlayer) bolt.dmg *= 1.6;   // arcade: the player's guns hit hard (a light bandit drops in ~4 paired volleys)
+    bolt.lock = lock; if (lock) bolt.life = Math.max(bolt.life, lock.pos.distanceTo(o) / (GUNS[g.type].speed * K) + 0.6);
     if (amb) { bolt.dmg *= 2.2; bolt.m.scale.multiplyScalar(1.6); }
     spawnPart(o, s.vel, 0.06 + sz * 0.02, 1.5 * sz * (amb ? 1.6 : 1), 3 * sz * (amb ? 1.6 : 1), GUNS[g.type].color, 0x000000, 1, true);
   }
@@ -1214,11 +1222,25 @@ export function updDebris(dt) {
 
 // ---------- bolts
 const segDist = (p, a, b) => { const ab = _a.copy(b).sub(a); const t = clamp(_b.copy(p).sub(a).dot(ab) / Math.max(1e-6, ab.lengthSq()), 0, 1); return _c.copy(a).addScaledVector(ab, t).distanceTo(p); };
+const _z1 = new V3(0, 0, 1);
+function updGlints() {
+  const cp = C.camera.position, k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight);
+  for (const e of C.ents) if (e.glint) {
+    e.glint.visible = e.alive && !e.cloaked;
+    const d = e.pos.distanceTo(cp), px = 9 * d * k;   // ~9 px wide at any range, fading out once the ship itself is big
+    e.glint.scale.setScalar(px / e.vis); e.glint.material.opacity = 0.9 * clamp((d - 250) / 600, 0, 1); e.glint.visible = e.glint.visible && d > 250;
+  }
+}
 function updBolts(dt) {
   const prev = tv();
   for (const b of C.boltPool) {
     if (b.life <= 0) continue;
     b.life -= dt; if (b.life <= 0) { b.m.visible = false; continue; }
+    if (b.lock) {
+      if (!b.lock.alive) b.lock = null;
+      else { const sp = b.vel.length(); b.vel.copy(b.lock.pos).sub(b.pos).normalize().multiplyScalar(sp); b.m.quaternion.setFromUnitVectors(_z1, _a.copy(b.vel).normalize());
+        if (b.pos.distanceTo(b.lock.pos) <= sp * dt + b.lock.radius) { damage(b.lock, b.dmg, b.lock.pos.clone(), b.owner, "gun"); b.life = 0; b.m.visible = false; continue; } }
+    }
     prev.copy(b.pos); b.pos.addScaledVector(b.vel, dt);
     let hit = null;
     for (const e of C.ents) {
@@ -1606,7 +1628,7 @@ function stepFlight(dt) {
   if (C.state === "flight") {
     runEvents(dt); autoNag(dt);
     if (ms.script === "ghost") ghostTick(dt);
-    updBolts(dt); updMissiles(dt); updDecoys(dt); updDebris(dt);
+    updBolts(dt); updGlints(); updMissiles(dt); updDecoys(dt); updDebris(dt);
     // nav cleared tracking
     const nav = ms.navs[C.navIdx];
     if (!C.cleared && !C.scriptHold && C.navT > 2 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns()) {
@@ -1665,8 +1687,7 @@ function render(dt, flight) {
   if (C.camLock) { cam.position.copy(C.camLock.pos); cam.up.set(0, 1, 0); cam.lookAt(C.camLock.look); if (C.camLock.fov) { cam.fov = C.camLock.fov; cam.updateProjectionMatrix(); } }
   if (C.sunFx) { C.sunFx.position.copy(cam.position).addScaledVector(_a.copy(C.sun.position).normalize(), 90000); C.sunFx.visible = C.sun.intensity > 0.2 && !C.indoor; }
   if (C.stars) { const u = C.stars.material.uniforms; u.uTime.value += dt; u.uScale.value = C.renderer.getPixelRatio() * Math.max(1, C.H / 1000); }
-  const b0 = C.bloom.strength; C.bloom.strength = b0 * (C.opts.bloom ?? 1); C.bloom.enabled = (C.opts.bloom ?? 1) > 0;
-  C.composer.render(dt); C.bloom.strength = b0;
+  C.composer.render(dt);
   // target camera into the left screen (render target)
   if (flight && C.view === "cockpit" && C.state === "flight" && C.player && C.target && C.target.alive && !commsActive() && !C.player.dmg.radar) {
     const r = C.renderer, T = C.target; const vc = C.vduCam; const tp = T.pos; const rad = T.comp ? 20 : T.radius;
@@ -1788,8 +1809,8 @@ function drawHUD(flight) {
         x.stroke();
         x.fillStyle = col; x.textAlign = "left"; x.fillText(`${(d / 1000 * 2).toFixed(1)}km`, p.x + s + 6, p.y - s + 6);
         // ITTS lead
-        if (!T.isCap && !T.comp && !pl.dmg.itts) { const gs = GUNS[pl.guns[0].type].speed * K; const lp = leadPoint(pl, T, gs); const q = proj(lp); if (!q.behind) { const dpx = lp.distanceTo(C.camera.position) || 1, foc = (H / 2) / Math.tan(C.camera.fov * Math.PI / 360), rp = clamp(Math.max(14, T.radius * 2.4) / dpx * foc, 12, 60);
-            const onPip = Math.hypot(q.x - W / 2, q.y - H / 2) < rp + 6;
+        if (!T.isCap && !T.comp && !pl.dmg.itts) { const gs = GUNS[pl.guns[0].type].speed * K; const lp = leadPoint(pl, T, gs); const q = proj(lp); if (!q.behind) { const dpx = lp.distanceTo(C.camera.position) || 1, foc = (H / 2) / Math.tan(C.camera.fov * Math.PI / 360), rp = clamp(Math.max(14, T.radius * 2.4) / dpx * foc, 40, 120);
+            const onPip = Math.hypot(q.x - W / 2, q.y - H / 2) < rp + 6; C.pipOn = onPip; C.pipTgt = T; C.pipT = C.t;
             x.strokeStyle = col; x.lineWidth = onPip ? 3 : 2; x.beginPath(); x.arc(q.x, q.y, rp, 0, 7); x.stroke();
             if (onPip) { x.fillStyle = "rgba(255,90,60,.18)"; x.beginPath(); x.arc(q.x, q.y, rp, 0, 7); x.fill(); }
             x.beginPath(); x.moveTo(q.x, q.y - rp * 0.45); x.lineTo(q.x + rp * 0.45, q.y); x.lineTo(q.x, q.y + rp * 0.45); x.lineTo(q.x - rp * 0.45, q.y); x.closePath(); x.stroke(); x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(q.x, q.y); x.globalAlpha = 0.3; x.stroke(); x.globalAlpha = 1; } }

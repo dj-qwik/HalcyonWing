@@ -634,7 +634,11 @@ Object.assign(STAGES, {
     return st;
   },
 });
-function setStage(name, arg) { if (name === "_keep" && stage) return; if (stage && stage.done) stage.done(); stage = STAGES[name](arg); stage.t = 0; stage.name = name;
+// scenes with crew: if they're built before the cast (faces + bodies, ~5 MB) has downloaded, the crew would simply be
+// missing for the whole scene; rebuild the scene the moment the cast arrives so everyone shows up
+const CREW_STAGES = new Set(["loungeRoom", "talkRoom", "briefingRoom", "hangarRoom", "scramble", "ship_reveal", "showroom"]);
+function setStage(name, arg) { if (name === "_keep" && stage) return; if (stage && stage.done) stage.done(); stage = STAGES[name](arg); stage.t = 0; stage.name = name; stage.arg = arg;
+  if (CREW_STAGES.has(name) && !castReady()) { const me = stage; preloadPortraits().then(() => { if (stage === me && castReady()) { const t = me.t; setStage(name, arg); stage.t = t; } }); }
   const hd = $("hDeck"); if (hd) hd.textContent = name === "hangarRoom" ? "Back to Lounge" : "Flight Deck";
   try { C.renderer.compile(C.scene, C.camera); } catch (e) { }   // compile every shader now, so figures never pop in half-built on their first frame
 }

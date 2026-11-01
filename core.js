@@ -1097,11 +1097,11 @@ function launchMissile(s, type, tgt) {
     const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), new THREE.MeshStandardMaterial({ color: type === "shear" ? 0xd0d0e0 : small ? 0xc8a050 : 0xb0b0b0, metalness: 0.8, roughness: 0.3 }));
     body.rotation.x = Math.PI / 2; g.add(body);
     const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: type === "shear" ? 0x80ffff : small ? 0xffd070 : 0xffa050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-    fl.scale.setScalar(big ? 12 : small ? 4 : 6); fl.position.z = len / 2 + 0.5; g.add(fl);
+    fl.scale.setScalar(big ? 14 : small ? 6.5 : 10); fl.position.z = len / 2 + 0.5; g.add(fl);
     g.scale.setScalar(big ? 1.6 : small ? 2.2 : 2.6);   // drawn well oversize so a missile is easy to follow on screen
     // a pod fans its seekers out in a ring before they curve in
     const off = small ? (i - (n - 1) / 2) : 0, ring = small ? new V3().addScaledVector(right, Math.cos(i / n * 6.283) * 0.35).addScaledVector(up, Math.sin(i / n * 6.283) * 0.35) : new V3();
-    g.position.copy(s.pos).addScaledVector(up, -2.5).addScaledVector(f, 3).addScaledVector(right, off * 1.2); g.quaternion.copy(s.q);
+    g.position.copy(s.pos).addScaledVector(up, s.isPlayer ? -0.8 : -2.5).addScaledVector(f, s.isPlayer ? 6 : 3).addScaledVector(right, off * 1.2); g.quaternion.copy(s.q);
     C.world.add(g);
     const v0 = f.clone().add(ring).normalize().multiplyScalar(s.speed + def.speed * K * 0.4);
     const m = { mesh: g, fl, flBase: fl.scale.x, pos: g.position, vel: v0, type, def, owner: s, team: s.team, target: tgt, life: def.life * (small ? 0.9 + Math.random() * 0.2 : 1), trail: 0, hp: big ? 20 : small ? 2 : 4 };
@@ -1116,6 +1116,11 @@ function launchMissile(s, type, tgt) {
 function updMissiles(dt) {
   for (const m of C.missiles) {
     m.life -= dt;
+    if (m.def.seek === "heat" && (!m.target || !m.target.alive) && m.life < m.def.life - 0.15) {   // unlocked heat seeker: take the nearest hostile ahead of its nose
+      const fwd = _b.copy(m.vel).normalize(); let best = null, bd = 1800;
+      for (const e of C.ents) if (e.alive && !e.comp && !e.isCap && e.team !== m.team) { const to = _c.copy(e.pos).sub(m.pos), d = to.length(); if (d < bd && fwd.dot(to.divideScalar(d)) > 0.88) { bd = d; best = e; } }
+      if (best) m.target = best;
+    }
     if (m.def.seek === "auto" && (!m.target || !m.target.alive)) {
       let best = null, bd = 2500; for (const e of C.ents) if (e.alive && !e.comp && !e.isCap && e.team !== m.team) { const d = e.pos.distanceTo(m.pos); if (d < bd) { bd = d; best = e; } } m.target = best;
     }
@@ -1126,7 +1131,8 @@ function updMissiles(dt) {
       const want = lead.sub(m.pos).normalize(); const cur = m.vel.clone().normalize();
       const ang = cur.angleTo(want); const maxT = m.def.turn * dt;
       if (ang > 1e-4) { const k = Math.min(1, maxT / ang); cur.lerp(want, k).normalize(); }
-      m.vel.copy(cur).multiplyScalar(Math.min(sp, m.vel.length() + sp * dt * 2));
+      const spd = Math.min(sp, m.vel.length() + sp * dt * 2);   // read the speed BEFORE overwriting vel with the unit heading (was resetting guided missiles to ~1 u/s every frame)
+      m.vel.copy(cur).multiplyScalar(spd);
       const hitR = (m.target.radius || 6) * (m.target.isCap ? 1 : 0.8) + 4;
       if (m.target.isCap ? insideCap(m.target, m.pos, 1.05) : dist < hitR) { missileHit(m, m.target); continue; }
     } else { m.vel.setLength(Math.min(sp, m.vel.length() + sp * dt * 2)); }
@@ -1135,7 +1141,7 @@ function updMissiles(dt) {
     // proximity for dumbfire / non-target hits
     if (m.def.seek === "none" || !m.target) for (const e of C.ents) { if (!e.alive || e.comp || e.team === m.team) continue; if (e.isCap ? insideCap(e, m.pos, 1) : e.pos.distanceTo(m.pos) < e.radius + 3) { missileHit(m, e); break; } }
     // exhaust flare never shrinks below ~14 px, so a missile stays visible all the way to its target
-    if (m.fl) { const d = m.pos.distanceTo(C.camera.position), k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight); m.fl.scale.setScalar(Math.max(m.flBase, 14 * d * k / m.mesh.scale.x)); }
+    if (m.fl) { const d = m.pos.distanceTo(C.camera.position), k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight); m.fl.scale.setScalar(Math.max(m.flBase, 20 * d * k / m.mesh.scale.x)); }
     m.trail -= dt; if (m.trail <= 0 && m.life > 0) { m.trail = m.def.cluster ? 0.04 : 0.022; const big = m.type === "torp";
       spawnPart(m.pos, _a.copy(m.vel).multiplyScalar(-0.05), 1.4, big ? 4 : 2.6, big ? 14 : 10, 0xd8d8d8, 0x404040, 0.5);
       spawnPart(m.pos, _a.copy(m.vel).multiplyScalar(-0.1), 0.18, big ? 5 : 3.5, 1, m.type === "shear" ? 0x80ffff : 0xffc070, 0x401000, 1, true); }
@@ -1583,7 +1589,9 @@ function playerUpdate(dt, ctl) {
   updLock(dt);
   if (ctl.missile && !s.cloaked && s.misSel && s.mis[s.misSel] > 0) {
     const def = MISSILES[s.misSel];
-    if (def.lock > 0 && !(s.lock.tgt === C.target && s.lock.t >= def.lock)) { C.msgs.push({ t: 1.5, text: def.capital || def.special ? "NO TORPEDO LOCK" : "NO MISSILE LOCK" }); sfx.cue("u_nolock", 0.45, {}, 220, 0.15); }
+    const locked = s.lock.tgt === C.target && s.lock.t >= def.lock;
+    if (def.lock > 0 && !locked && def.seek === "heat") { launchMissile(s, s.misSel, null); s.lock.t = 0; C.msgs.push({ t: 1.5, text: "NO LOCK — SEEKING" }); }   // heat seekers always launch; they pick up the first engine that crosses their nose
+    else if (def.lock > 0 && !locked) { C.msgs.push({ t: 1.5, text: def.capital || def.special ? "NO TORPEDO LOCK" : "NO MISSILE LOCK" }); sfx.cue("u_nolock", 0.45, {}, 220, 0.15); }
     else { launchMissile(s, s.misSel, def.seek === "none" ? null : C.target); s.lock.t = 0; }
   }
   if (ctl.decoy) dropDecoy(s);
@@ -1631,8 +1639,9 @@ function updLock(dt) {
   if (def.special) ok = ok && T.def && T.def.shearOnly;
   if (!def.capital && !def.special) ok = ok && !T.isCap;
   const cone = def.seek === "heat" ? 0.4 : def.capital || def.special ? 0.22 : 0.35;
-  if (def.seek === "heat") ok = ok && (T.forward ? T.forward(_c).dot(to.clone().normalize()) > 0.2 : true);
-  if (ok && ang < cone) { const was = s.lock.t < def.lock; s.lock.t += dt; if (was && s.lock.t >= def.lock) { sfx.cue("u_lock", 0.55, {}, 1760, 0.25, 0.12, "sine"); C.msgs.push({ t: 1.2, text: def.capital || def.special ? "TORPEDO LOCK" : "MISSILE LOCK" }); } else if (was && Math.floor(s.lock.t * 6) !== Math.floor((s.lock.t - dt) * 6)) sfx.cue("u_seek", 0.3, { rate: 1.3 }, 1320, 0.03, 0.05); }
+  // heat seekers lock fastest on a target's engines (from behind); any other aspect still locks, at half speed
+  const rate = def.seek === "heat" && T.forward && T.forward(_c).dot(to.clone().normalize()) <= 0.2 ? 0.5 : 1;
+  if (ok && ang < cone) { const was = s.lock.t < def.lock; s.lock.t += dt * rate; if (was && s.lock.t >= def.lock) { sfx.cue("u_lock", 0.55, {}, 1760, 0.25, 0.12, "sine"); C.msgs.push({ t: 1.2, text: def.capital || def.special ? "TORPEDO LOCK" : "MISSILE LOCK" }); } else if (was && Math.floor(s.lock.t * 6) !== Math.floor((s.lock.t - dt) * 6)) sfx.cue("u_seek", 0.3, { rate: 1.3 }, 1320, 0.03, 0.05); }
   else s.lock.t = Math.max(0, s.lock.t - dt * 2);
 }
 function cycleTarget(dir) {
@@ -1977,6 +1986,10 @@ function drawHUD(flight) {
     x.globalAlpha = 1;
     // incoming missiles markers
     for (const m of C.missiles) { if (m.team === "concord") continue; const p = proj(m.pos); if (p.behind) continue; x.fillStyle = "#ffe060"; x.beginPath(); x.arc(p.x, p.y, 3, 0, 7); x.fill(); }
+    // your own missiles: a small tracker so you can follow every shot to the target, even across the dash
+    for (const m of C.missiles) { if (m.owner !== pl) continue; const p = proj(m.pos); if (p.behind || p.x < 0 || p.x > W || p.y < 0 || p.y > H) continue;
+      x.strokeStyle = "#ffb440"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(p.x, p.y - 7); x.lineTo(p.x + 7, p.y); x.lineTo(p.x, p.y + 7); x.lineTo(p.x - 7, p.y); x.closePath(); x.stroke();
+      x.fillStyle = "#ffb440"; x.font = "10px 'Share Tech Mono', monospace"; x.textAlign = "left"; x.fillText(m.def.short, p.x + 10, p.y + 4); }
     // target
     const T = C.target;
     if (T && T.alive) {

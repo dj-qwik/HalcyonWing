@@ -192,4 +192,4 @@ export function headPos(f, out = new V3()) {
   const r = f.userData.rig; if (!r || !r.eyes.length) return f.getWorldPosition(out).add(new V3(0, 1.65, 0));
   const a = new V3(), b = new V3(); r.eyes[0].getWorldPosition(a); r.eyes[1].getWorldPosition(b); return out.copy(a).add(b).multiplyScalar(0.5);
 }
-export function figureCached(id, opts) { const k = id; let f = cache.get(k); if (!f) { f = makeFigure(id, opts); if (f) cache.set(k, f); } if (f) { if (f.parent) f.parent.remove(f); setPose(f, opts?.pose || "stand"); } return f; }
+export function figureCached(id, opts) { const k = id; let f = cache.get(k); if (!f) { f = makeFigure(id, opts); if (f) cache.set(k, f); } if (f) { if (f.parent) f.parent.remove(f); f.visible = true; f.scale.set(1, 1, 1); f.rotation.set(0, 0, 0); setPose(f, opts?.pose || "stand"); } return f; }   // cached figures are shared between scenes: reset anything a previous scene changed (the scramble hides wingmen once they reach their fighters)

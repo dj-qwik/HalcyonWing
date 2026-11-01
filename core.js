@@ -355,6 +355,13 @@ export const sfx = (() => {
     },
     missile(kind, pos) { if (!ctx) return; if (BUF.m_launch) { const sp = spatial(pos, 2200); ps(kind === "torp" ? "m_torp" : "m_launch", (kind === "torp" ? 0.75 : 0.6) * (pos ? 0.6 : 1) * sp.v, { jit: 0.06, pan: sp.pan, lp: sp.lp }); return; } if (pos) return; const t = ctx.currentTime; const n = ctx.createBufferSource(); n.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.5); n.connect(f); env(f, 0.4, t, 0.8); n.start(t); n.stop(t + 1); },
     beep(f = 880, d = 0.08, v = 0.12, type = "square") { if (!ctx) return; const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; env(o, v, t, d); o.start(t); o.stop(t + d + 0.02); },
+    // confirms the player's shot landed: a bright electric tick on shields, a metallic crunch on hull, a heavier knell on the kill
+    hitConfirm(shield, kill) { if (!ctx) return; const t = ctx.currentTime; if (t - (this._hc || 0) < 0.045 && !kill) return; this._hc = t;
+      const o = ctx.createOscillator(); o.type = shield ? "sine" : "triangle";
+      if (shield) { o.frequency.setValueAtTime(2100, t); o.frequency.exponentialRampToValueAtTime(1300, t + 0.07); } else { o.frequency.setValueAtTime(kill ? 300 : 560, t); o.frequency.exponentialRampToValueAtTime(kill ? 90 : 240, t + (kill ? 0.3 : 0.09)); }
+      env(o, shield ? 0.16 : kill ? 0.3 : 0.22, t, kill ? 0.35 : 0.1); o.start(t); o.stop(t + 0.4);
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = shield ? "highpass" : "bandpass"; f.frequency.value = shield ? 3500 : 1400; f.Q.value = shield ? 0.7 : 1.4; n.connect(f); env(f, shield ? 0.18 : 0.32, t, shield ? 0.06 : 0.12); n.start(t); n.stop(t + 0.15);
+    },
     // low body-blow under every impact: a pitched-down sine thump plus a burst of low-passed noise
     thud(v = 1) { if (!ctx) return; const t = ctx.currentTime; v = Math.min(1.2, v);
       const o = ctx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(74, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.3);
@@ -691,6 +698,7 @@ function loadNav(i, first) {
     if (f.type === "lifepod") { s.speed = 0; s.obj.rotation.set(rand(0, 6), rand(0, 6), 0); }
   }
   for (const g of nav.groups || []) spawnGroup(g);
+  setupNavBeacon(i);
   if (nav.home) C.comms.push({ who: "comms", text: `${C.camp.callsign || "Vigil"}, Halcyon. We have you on scope. Request landing when ready.` });
   if (nav.start && first) { pl.pos.set(0, 0, 400); pl.speed = 0; pl.vel.set(0, 0, 0); C.tube = buildTube(); C.world.add(C.tube); C.wing.forEach((w, k) => { w.pos.set(k % 2 ? -60 : 60, 10, -250 - k * 40); }); }
   if (nav.env && nav.env.flakField) C.flak = 1;
@@ -876,7 +884,7 @@ function ghostTick(dt) {
     if (G.shroud && G.shroud.alive) { explode(G.shroud.pos, 600, 0x9a70ff); G.shroud.remove(); }
     C.msgs.push({ t: 4, text: "UNKNOWN VESSEL HAS JUMPED OUT" });
     C.comms.push({ who: "comms", text: "Halcyon to {callsign}. The contact has jumped. ...Come home, {rank}. Come home." });
-    C.cleared = true; (C.stats.navs[1] = C.stats.navs[1] || {}).cleared = true; C.msgs.push({ t: 4, text: "NAV 1 SECURE — AUTOPILOT AVAILABLE" });
+    C.cleared = true; (C.stats.navs[1] = C.stats.navs[1] || {}).cleared = true; C.msgs.push({ t: 4, text: "NAV 1 SECURE — FLY TO THE NAV MARKER OR AUTOPILOT" });
   }
 }
 function scripted(fn) {
@@ -1007,12 +1015,13 @@ function launchMissile(s, type, tgt) {
     body.rotation.x = Math.PI / 2; g.add(body);
     const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: type === "shear" ? 0x80ffff : small ? 0xffd070 : 0xffa050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
     fl.scale.setScalar(big ? 12 : small ? 4 : 6); fl.position.z = len / 2 + 0.5; g.add(fl);
+    g.scale.setScalar(big ? 1.6 : small ? 2.2 : 2.6);   // drawn well oversize so a missile is easy to follow on screen
     // a pod fans its seekers out in a ring before they curve in
     const off = small ? (i - (n - 1) / 2) : 0, ring = small ? new V3().addScaledVector(right, Math.cos(i / n * 6.283) * 0.35).addScaledVector(up, Math.sin(i / n * 6.283) * 0.35) : new V3();
     g.position.copy(s.pos).addScaledVector(up, -2.5).addScaledVector(f, 3).addScaledVector(right, off * 1.2); g.quaternion.copy(s.q);
     C.world.add(g);
     const v0 = f.clone().add(ring).normalize().multiplyScalar(s.speed + def.speed * K * 0.4);
-    const m = { mesh: g, pos: g.position, vel: v0, type, def, owner: s, team: s.team, target: tgt, life: def.life * (small ? 0.9 + Math.random() * 0.2 : 1), trail: 0, hp: big ? 20 : small ? 2 : 4 };
+    const m = { mesh: g, fl, flBase: fl.scale.x, pos: g.position, vel: v0, type, def, owner: s, team: s.team, target: tgt, life: def.life * (small ? 0.9 + Math.random() * 0.2 : 1), trail: 0, hp: big ? 20 : small ? 2 : 4 };
     if (type === "ff") m.target = null;
     if (def.seek === "none") m.target = null;
     C.missiles.push(m);
@@ -1042,7 +1051,11 @@ function updMissiles(dt) {
     m.mesh.quaternion.setFromUnitVectors(new V3(0, 0, -1), _b.copy(m.vel).normalize());
     // proximity for dumbfire / non-target hits
     if (m.def.seek === "none" || !m.target) for (const e of C.ents) { if (!e.alive || e.comp || e.team === m.team) continue; if (e.isCap ? insideCap(e, m.pos, 1) : e.pos.distanceTo(m.pos) < e.radius + 3) { missileHit(m, e); break; } }
-    m.trail -= dt; if (m.trail <= 0 && m.life > 0) { m.trail = 0.025; spawnPart(m.pos, _a.copy(m.vel).multiplyScalar(-0.05), 0.9, m.type === "torp" ? 3 : 1.4, m.type === "torp" ? 9 : 5, 0xbbbbbb, 0x303030, 0.35); }
+    // exhaust flare never shrinks below ~14 px, so a missile stays visible all the way to its target
+    if (m.fl) { const d = m.pos.distanceTo(C.camera.position), k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight); m.fl.scale.setScalar(Math.max(m.flBase, 14 * d * k / m.mesh.scale.x)); }
+    m.trail -= dt; if (m.trail <= 0 && m.life > 0) { m.trail = m.def.cluster ? 0.04 : 0.022; const big = m.type === "torp";
+      spawnPart(m.pos, _a.copy(m.vel).multiplyScalar(-0.05), 1.4, big ? 4 : 2.6, big ? 14 : 10, 0xd8d8d8, 0x404040, 0.5);
+      spawnPart(m.pos, _a.copy(m.vel).multiplyScalar(-0.1), 0.18, big ? 5 : 3.5, 1, m.type === "shear" ? 0x80ffff : 0xffc070, 0x401000, 1, true); }
     if (m.life <= 0) { explode(m.pos, 4, 0xffb060); m.dead = true; C.world.remove(m.mesh); }
   }
   C.missiles = C.missiles.filter(m => !m.dead);
@@ -1164,6 +1177,16 @@ export function damage(t, amt, at, src, kind = "gun") {
     if (rem > 0) { t.core -= rem; if (t.isPlayer && Math.random() < 0.35) { const sys = pick(["guns", "engine", "radar", "itts", "shields", "comms"]); if (!t.dmg[sys]) { t.dmg[sys] = true; C.msgs.push({ t: 3, text: "DAMAGE: " + { guns: "GUN MOUNT", engine: "ENGINE", radar: "RADAR", itts: "ITTS", shields: "SHIELD GENERATOR", comms: "COMMS" }[sys] }); if (sys === "guns") { const g = t.guns.find(g => g.ok); if (g && t.guns.filter(x => x.ok).length > 1) g.ok = false; } } } }
   }
   if (t.isPlayer) { playerHitFx(t, amt, at, src, sh >= amt); C.hitFlash = rem > 0 || sh < amt ? "armor" : "shield"; C.hitFlashT = 0.25; sfx.hit(sh >= amt); rumble(Math.min(1, amt / 25), 140); C.stats.hitsTaken += amt; if (t.core < t.coreMax * 0.5) C.stats.wounded = true; }
+  else if (src && src.isPlayer) {   // the player's hits read loud and clear: on the ship, on the HUD, in the ears
+    const shHit = sh >= amt, k = Math.max(1, t.radius / 10);
+    if (shHit) { spawnPart(at, t.vel, 0.28, 3 * k, 10 * k, 0x9ad8ff, 0x103060, 1, true); spawnPart(t.pos, t.vel, 0.22, t.radius * 1.5, t.radius * 2.1, 0x4a90ff, 0x000010, 0.35, true); }
+    else {
+      spawnPart(at, t.vel, 0.3, 3 * k, 9 * k, 0xffd090, 0x802000, 1, true);
+      for (let i = 0; i < 5; i++) spawnPart(at, _a.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize().multiplyScalar(rand(40, 110)).add(t.vel), rand(0.35, 0.6), 1.1 * k, 0.2, 0xffe0a0, 0xff4000, 1, true);
+      spawnPart(at, t.vel, 1.1, 2 * k, 8 * k, 0x585858, 0x202020, 0.45);
+    }
+    C.hitMark = { t: C.t, shield: shHit, kill: t.core <= 0, tgt: t }; sfx.hitConfirm(shHit, t.core <= 0);
+  }
   else spawnPart(at, t.vel, 0.2, 2, 6, sh >= amt ? 0x80c0ff : 0xffb060, 0x000000, 1, true);
   if (t.protect && t.core < 5) t.core = 5;
   if (t.core <= 0) {
@@ -1547,14 +1570,50 @@ function doComms(n) {
 }
 function boundKey(id) { const c = (binds.kb[id] || []).find(Boolean); if (!c) return "?"; return c.replace(/^Ctrl\+/, "Ctrl+").replace(/^Key/, "").replace(/^Digit/, "").replace(/^Numpad/, "Num "); }
 // tell the player how to move on: the mission advances by autopilot, which isn't obvious to a newcomer
+// ---------- flying to the next nav point by hand (autopilot is the optional shortcut)
+const NAV_LEG = 7000;   // ~14 km on the HUD: about half a minute at cruise, a quarter of that on afterburner
+function setupNavBeacon(i) {
+  const ms = C.mission, nav = ms.navs[i], next = ms.navs[i + 1];
+  C.navBeacon = null; C.enroute = null;
+  if (!next || nav.home || ms.defend) return;
+  const a = Math.sin(i * 12.9898 + 3.1) * 0.6, b = Math.sin(i * 78.233 + 1.7) * 0.14;   // each leg heads off on its own bearing
+  const pos = new V3(Math.sin(a), b, -Math.cos(a)).normalize().multiplyScalar(NAV_LEG);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: 0x60ffb0, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  spr.position.copy(pos); C.world.add(spr);
+  C.navBeacon = { pos, name: next.name, d0: NAV_LEG, spr };
+  // en-route contact: on a bit under half the legs a Vharr patrol is sitting on the route (flown or autopiloted)
+  const types = [...new Set(ms.navs.flatMap(n => (n.groups || []).map(g => g.type)))].filter(t => SHIPS[t] && SHIPS[t].faction === "vharr" && !SHIPS[t].capital);
+  if (Math.random() < 0.45) C.enroute = { at: rand(0.3, 0.6), type: types.length ? pick(types) : "skrel", n: Math.random() < 0.5 ? 2 : 3, done: false };
+}
+function enrouteContact() {
+  const E = C.enroute; if (!E || E.done) return false; E.done = true;
+  spawnGroup({ type: E.type, n: E.n });
+  C.msgs.push({ t: 3, text: "CONTACTS ON THE NAV ROUTE" }); sfx.cue("u_unavail", 0.5, {}, 300, 0.25);
+  const w = (C.wing || []).find(x => x.alive && x.pilot); C.comms.push({ who: w ? w.pilot : "comms", text: pick(["Contacts on our heading! Vharr patrol, weapons hot!", "Bandits dead ahead! Looks like they were waiting for us.", "Heads up, we've got company on the route!"]) });
+  return true;
+}
+function navTravel(dt) {
+  const B = C.navBeacon; if (!B) return;
+  const pl = C.player, d = pl.pos.distanceTo(B.pos);
+  // beacon light: blinks, and never shrinks below a few pixels
+  const k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight);
+  B.spr.scale.setScalar(Math.max(30, 16 * d * k)); B.spr.material.opacity = 0.55 + 0.45 * (Math.sin(C.t * 5) > 0 ? 1 : 0.2);
+  if (C.state !== "flight") return;
+  if (C.enroute && !C.enroute.done && 1 - d / B.d0 > C.enroute.at && autoAvailable()) enrouteContact();
+  if (d < 700) {
+    if (!autoAvailable()) { if (!B.warned) { B.warned = true; C.msgs.push({ t: 3, text: "NAV POINT LOCKED — CLEAR HOSTILES" }); } return; }
+    C.msgs.push({ t: 3, text: "ARRIVING — " + B.name.toUpperCase() }); sfx.whoosh(1.6);
+    loadNav(C.navIdx + 1); C.fade = 1;
+  }
+}
 function autoNag(dt) {
   const ms = C.mission, nav = ms.navs[C.navIdx], next = ms.navs[C.navIdx + 1];
   if (!next || nav.home || ms.defend || C.scriptHold) return;
   C._nagT = (C._nagT ?? 4) - dt;
   if (C._nagT > 0 || !autoAvailable()) return;
-  const first = !C._nagged; C._nagged = true; C._nagT = 30;
-  C.msgs.push({ t: 5, text: `PRESS ${boundKey("auto")} — AUTOPILOT TO ${next.name.toUpperCase()}` });
-  if (first) { const w = (C.wing || []).find(x => x.alive && x.pilot); C.comms.push({ who: w ? w.pilot : "comms", text: `Area's clear. Hit autopilot and we'll jump to ${next.name}.` }); }
+  const first = !C._nagged; C._nagged = true; C._nagT = 60;
+  C.msgs.push({ t: 5, text: `FLY TO ${next.name.toUpperCase()} (FOLLOW THE NAV MARKER) — OR ${boundKey("auto")} FOR AUTOPILOT` });
+  if (first) { const w = (C.wing || []).find(x => x.alive && x.pilot); C.comms.push({ who: w ? w.pilot : "comms", text: `Area's clear. Form up and we'll head for ${next.name}, or punch autopilot if you're in a hurry.` }); }
 }
 function autoAvailable() {
   if (C.scriptHold) return false;
@@ -1604,15 +1663,17 @@ function stepFlight(dt) {
   if (C.state === "launch") {
     const t = C.stateT, ck = C.cockpit;
     if (C.tube && C.tube.userData.tick) C.tube.userData.tick(dt);
+    if (C.tube && C.carrier) C.carrier.obj.visible = false;   // the carrier's hull plating cuts across the bore: hide it until we're out (it's behind us then)
     ck.userData.power = clamp((t - 0.6) / 3.0, 0, 1);
     sfx.engine(clamp((t - 0.5) / 3.5, 0, 1) * 0.5 + (t > 4 ? 0.6 : 0), t > 4);
     if (t > 0.5 && !C.ls1) { C.ls1 = 1; C.comms.push({ who: "comms", text: `${C.camp.callsign || "Vigil"}, Halcyon flight control. Tube three is hot. Bring your systems up.` }); sfx.cue("u_powerup", 0.5, {}, 440, 0.4, 0.06, "sine"); }
     if (t > 2.4 && !C.ls2) { C.ls2 = 1; C.comms.push({ who: "comms", text: "Catapult armed. Launch in three... two... one..." }); }
     if (t < 4.2) { pl.speed = 0; pl.vel.set(0, 0, 0); if (t > 0.5) C.shake = Math.max(C.shake || 0, 0.04 + Math.min(1, (t - 0.5) / 3.7) * 0.07); }
     else { if (!C.ls3) { C.ls3 = 1; sfx.whoosh(2.4); rumble(0.8, 600); sfx.thud(0.9); C.shake = 0.6; const kk = C.kick || (C.kick = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }); kk.vx += 1.4; } pl.speed = Math.min(pl.def.ab * K * 1.2, pl.speed + dt * 520); pl.vel.set(0, 0, -pl.speed); pl.pos.addScaledVector(pl.vel, dt); C.shake = Math.max(C.shake || 0, 0.14); }
-    if (pl.pos.z < -60) { C.state = "flight"; C.ls1 = C.ls2 = C.ls3 = 0; C.view = "cockpit"; pl.setSpeed = pl.def.speed * K * 0.7; pl.speed = pl.def.speed * K; sfx.play("cruise"); C._calm = 0; if (C.tube) { C.world.remove(C.tube); C.tube = null; } }
+    if (pl.pos.z < -60) { C.state = "flight"; C.ls1 = C.ls2 = C.ls3 = 0; C.view = "cockpit"; pl.setSpeed = pl.def.speed * K * 0.7; pl.speed = pl.def.speed * K; sfx.play("cruise"); C._calm = 0; if (C.tube) { C.world.remove(C.tube); C.tube = null; } if (C.carrier) C.carrier.obj.visible = true; }
   } else if (C.state === "auto") {
-    if (C.stateT > 3.2) { loadNav(C.navIdx + 1); C.state = "flight"; C.fade = 1; }
+    if (C.stateT > 1.6 && C.enroute && !C.enroute.done) { C.state = "flight"; C.msgs.push({ t: 3, text: "AUTOPILOT DISENGAGED" }); enrouteContact(); }
+    else if (C.stateT > 3.2) { loadNav(C.navIdx + 1); C.state = "flight"; C.fade = 1; }
     for (const e of C.ents) if (e.alive && !e.isCap && !e.comp && e.keep) { e.speed = e.def.speed * K * 1.4; e.forward(e.vel).multiplyScalar(e.speed); e.pos.addScaledVector(e.vel, dt); }
   } else if (C.state === "landing") {
     const car = C.carrier; const bay = (car.m.bay || new V3(0, 0, -400)).clone().applyQuaternion(car.q).add(car.pos);
@@ -1626,14 +1687,14 @@ function stepFlight(dt) {
   if (C.state === "ended") return;
   for (const e of C.ents) { if (!e.alive || e.isPlayer) continue; if (e.comp) { e.update(); continue; } if (e.isCap) aiCapital(e, dt); else if (C.state === "flight") aiFighter(e, dt); }
   if (C.state === "flight") {
-    runEvents(dt); autoNag(dt);
+    runEvents(dt); autoNag(dt); navTravel(dt);
     if (ms.script === "ghost") ghostTick(dt);
     updBolts(dt); updGlints(); updMissiles(dt); updDecoys(dt); updDebris(dt);
     // nav cleared tracking
     const nav = ms.navs[C.navIdx];
     if (!C.cleared && !C.scriptHold && C.navT > 2 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns()) {
       const capsLeft = nav.obj === "destroy" ? !C.stats.deadIds.has(nav.target) : false;
-      if (!capsLeft) { C.cleared = true; C.stats.navs[C.navIdx].cleared = true; if (nav.obj && nav.obj !== "none" && !nav.home) C.msgs.push({ t: 3, text: ms.defend ? "AREA SECURE — REQUEST LANDING" : "NAV " + C.navIdx + " SECURE — AUTOPILOT AVAILABLE" }); }
+      if (!capsLeft) { C.cleared = true; C.stats.navs[C.navIdx].cleared = true; if (nav.obj && nav.obj !== "none" && !nav.home) C.msgs.push({ t: 3, text: ms.defend ? "AREA SECURE — REQUEST LANDING" : "NAV " + C.navIdx + " SECURE — FLY TO THE NAV MARKER OR AUTOPILOT" }); }
     }
     // flak field (Kethra)
     if (C.flak && !pl.cloaked && Math.random() < dt * 2.2) { const fp = pl.pos.clone().addScaledVector(pl.forward(tv()), rand(50, 300)).add(new V3(rand(-120, 120), rand(-120, 120), rand(-120, 120))); explode(fp, 8, 0xffa060); if (fp.distanceTo(pl.pos) < 50) damage(pl, 9, fp, null); }
@@ -1785,8 +1846,24 @@ function drawHUD(flight) {
     x.strokeStyle = AMBER; x.lineWidth = 1.5; x.globalAlpha = 0.9;
     x.beginPath(); for (const [a, b, c, d] of [[-22, 0, -8, 0], [8, 0, 22, 0], [0, -22, 0, -8], [0, 8, 0, 22]]) { x.moveTo(cx + a, cy + b); x.lineTo(cx + c, cy + d); } x.stroke();
     x.beginPath(); x.arc(cx, cy, 2, 0, 7); x.fillStyle = AMBER; x.fill();
+    // hit marker: diagonal ticks on the crosshair (cyan = shields, white = hull, big red = kill)
+    if (C.hitMark) { const hm = C.hitMark, age = C.t - hm.t, life = hm.kill ? 0.55 : 0.2;
+      if (age < life) { const a = 1 - age / life, r0 = hm.kill ? 12 : 9, r1 = hm.kill ? 30 : 20; x.globalAlpha = a; x.strokeStyle = hm.kill ? "#ff4030" : hm.shield ? "#8ae0ff" : "#ffffff"; x.lineWidth = hm.kill ? 4 : 2.5;
+        x.beginPath(); for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { x.moveTo(cx + sx * r0, cy + sy * r0); x.lineTo(cx + sx * r1, cy + sy * r1); } x.stroke(); x.globalAlpha = 1; } }
     // mouse stick indicator
     if (mouse.locked) { x.strokeStyle = DIM; x.beginPath(); x.arc(cx + mouse.x * 120, cy + mouse.y * 120, 6, 0, 7); x.stroke(); x.beginPath(); x.arc(cx, cy, 120, 0, 7); x.setLineDash([2, 6]); x.stroke(); x.setLineDash([]); }
+    // nav marker: where the next waypoint is, how far, and whether it's open
+    if (C.navBeacon && C.state === "flight") { const B = C.navBeacon, d = B.pos.distanceTo(pl.pos), ok = autoAvailable(), nc = ok ? "#60ffb0" : "rgba(96,255,176,.45)";
+      const lbl = `${B.name.toUpperCase()}  ${(d / 1000 * 2).toFixed(1)}km`, p = proj(B.pos); x.strokeStyle = nc; x.fillStyle = nc; x.lineWidth = 2; x.font = "12px 'Share Tech Mono', monospace";
+      if (!p.behind && p.x > 30 && p.x < W - 30 && p.y > 30 && p.y < H - 30) {
+        x.beginPath(); x.moveTo(p.x, p.y - 12); x.lineTo(p.x + 12, p.y); x.lineTo(p.x, p.y + 12); x.lineTo(p.x - 12, p.y); x.closePath(); x.stroke(); x.strokeRect(p.x - 3, p.y - 3, 6, 6);
+        x.textAlign = "center"; x.fillText(lbl, p.x, p.y - 18); if (!ok) x.fillText("CLEAR AREA", p.x, p.y + 28);
+      } else {   // off screen: an arrow on the edge pointing the way
+        const v = B.pos.clone().applyMatrix4(C.camera.matrixWorldInverse); let ax = v.x, ay = -v.y; if (v.z > 0 && Math.hypot(ax, ay) < 1e-3) ay = 1; const a = Math.atan2(ay, ax);
+        const rx = W / 2 - 60, ry = H / 2 - 60, ex = W / 2 + Math.cos(a) * rx, ey = H / 2 + Math.sin(a) * ry;
+        x.save(); x.translate(ex, ey); x.rotate(a); x.beginPath(); x.moveTo(14, 0); x.lineTo(-8, -9); x.lineTo(-8, 9); x.closePath(); x.fill(); x.restore();
+        x.textAlign = "center"; x.fillText(lbl, ex - Math.cos(a) * 34, ey - Math.sin(a) * 22);
+      } }
     // ship markers
     for (const e of C.ents) {
       if (!e.alive || e === pl || e.comp) continue;
@@ -1804,7 +1881,8 @@ function drawHUD(flight) {
       const p = proj(T.pos); const d = T.pos.distanceTo(pl.pos); const col = teamCol(T);
       if (!p.behind && p.x > 0 && p.x < W && p.y > 0 && p.y < H) {
         const s = clamp((T.radius * 1.4) / d * H, 14, 120);
-        x.strokeStyle = col; x.lineWidth = 2; x.beginPath();
+        const flash = C.hitMark && C.hitMark.tgt === T && C.t - C.hitMark.t < 0.12;   // brackets blink when your rounds land
+        x.strokeStyle = flash ? (C.hitMark.shield ? "#8ae0ff" : "#ffffff") : col; x.lineWidth = flash ? 3.5 : 2; x.beginPath();
         for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { x.moveTo(p.x + sx * s, p.y + sy * (s - 8)); x.lineTo(p.x + sx * s, p.y + sy * s); x.lineTo(p.x + sx * (s - 8), p.y + sy * s); }
         x.stroke();
         x.fillStyle = col; x.textAlign = "left"; x.fillText(`${(d / 1000 * 2).toFixed(1)}km`, p.x + s + 6, p.y - s + 6);

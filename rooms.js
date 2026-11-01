@@ -433,14 +433,16 @@ export const CANOPY = {
   kestrel: { c: [0, 0.8, -3], s: [0.95, 0.72, 1.9] }, lancer: { c: [0, 1.2, -4], s: [1.0, 0.7, 2.0] }, warden: { c: [0, 2.0, -4.5], s: [1.1, 0.66, 2.1] },
   longbow: { c: [0, 2.6, -7], s: [1.3, 0.66, 2.2] }, wraith: { c: [0, 1.4, -3], s: [0.9, 0.5, 2.0] },
 };
-export function makeCanopy(type) {
-  const C = CANOPY[type] || CANOPY.lancer;
+export function makeCanopy(type, fit) {
+  const C = fit ? { c: fit.p, s: fit.sz } : (CANOPY[type] || CANOPY.lancer);   // fit = the model's own dome, so it matches the fuselage
   const piv = new THREE.Group(); piv.position.set(C.c[0], C.c[1], C.c[2] + C.s[2] * 0.95);
   const glass = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: 0x88aacc, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.2, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false }));
   glass.scale.set(C.s[0], C.s[1], C.s[2]); glass.position.set(0, 0, -C.s[2] * 0.95); piv.add(glass);
   const fr = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.8, roughness: 0.4 });
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 48), fr); rim.rotation.x = Math.PI / 2; rim.scale.set(C.s[0], C.s[2], 1); rim.position.copy(glass.position); piv.add(rim);
-  const arch = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 24, Math.PI), fr); arch.scale.set(C.s[0], C.s[1], 1); arch.position.set(0, 0, -C.s[2] * 0.6); piv.add(arch);
+  // thin frame: sill ring and one bow, both scaled to sit on the glass rather than stand off it
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 48), fr); rim.rotation.x = Math.PI / 2; rim.scale.set(C.s[0], C.s[2], 1); rim.position.copy(glass.position); piv.add(rim);
+  const bz = 0.35, ry = Math.sqrt(1 - bz * bz);   // bow sits where the dome's cross-section is (ry * size)
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(1, 0.03, 8, 24, Math.PI), fr); arch.scale.set(C.s[0] * ry, C.s[1] * ry, 1); arch.position.set(0, 0, -C.s[2] * 0.95 + C.s[2] * bz); piv.add(arch);
   piv.userData.seat = new V3(C.c[0], C.c[1] - C.s[1] * 0.9 - 0.4, C.c[2]);
   return piv;
 }

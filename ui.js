@@ -539,7 +539,7 @@ Object.assign(STAGES, {
     const R = ROOMS.buildHangar(C.world, true); C.indoor = true;
     const myType = ms.ship, wingType = ms.ship === "wraith" ? "warden" : ms.ship;
     const mine = M.buildShipOpen(myType); mine.obj.position.set(0, 2.2, -12); C.world.add(mine.obj);   // no fixed canopy frame: the hinged canopy below is the only one
-    const can = ROOMS.makeCanopy(myType); mine.obj.add(can); can.rotation.x = 1.15;   // hinged at the rear: open = front lifted up
+    const fit = mine.canopy; const can = ROOMS.makeCanopy(myType, fit); mine.obj.add(can); can.rotation.x = 1.15;   // hinged at the rear: open = front lifted up
     const wsz = new THREE.Box3().setFromObject(M.buildShip(wingType).obj).getSize(new V3());   // measure, then park with clearance
     const others = (ms.wing || []).map((w, i) => ({ w, s: put(wingType, [(i % 2 ? 1 : -1) * (wsz.x + 4) * (1 + Math.floor(i / 2) * 0.5), 2.2, -6 - Math.floor(i / 2) * (wsz.z + 6)], [0, i % 2 ? -0.12 : 0.12, 0]) }));
     const runners = [];
@@ -548,9 +548,64 @@ Object.assign(STAGES, {
     others.forEach(({ w, s }, i) => { const f = place(w, [i % 2 ? 9 : -6, 0, 20], Math.PI, "run"); if (f) runners.push({ f, from: f.position.clone(), to: s.obj.position.clone().setY(0).add(new V3(i % 2 ? -3 : 3, 0, 3)) }); });
     const crew = place("rabbit", [-4, 0, -4], 0.6, "point");
     const seat = can.userData.seat; let seated = true; if (me) { mine.obj.add(me); me.position.copy(seat); me.rotation.set(0, Math.PI, 0); }
+    if (fit) {
+      // a simple open cockpit: dark tub, raised sill lip, instrument panel with lit screens under a glare shield,
+      // side consoles and a seat back with headrest, so the pilot reads as sitting IN a cockpit, not stuck in solid hull
+      const [cx, cy, cz] = fit.p, [sx, sy, sz] = fit.sz, ck = new THREE.Group(); mine.obj.add(ck);
+      const dk = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.9, metalness: 0.1 });
+      const grey = new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 0.55, metalness: 0.6 });
+      const panel = new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.7, metalness: 0.3 });
+      const box = (w, h, d, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.x = rx; ck.add(o); return o; };
+      const scr = (w, h, col, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col })); o.position.set(x, y, z); o.rotation.x = rx; ck.add(o); return o; };
+      const well = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 10), dk); well.scale.set(sx * 0.9, 0.05, sz * 0.92); well.position.set(cx, cy + 0.01, cz); ck.add(well);
+      const lip = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 48), grey); lip.rotation.x = Math.PI / 2; lip.scale.set(sx * 0.92, sz * 0.94, 1.6); lip.position.set(cx, cy + 0.035, cz); ck.add(lip);
+      // instrument panel, tilted toward the pilot, with two MFDs and a strip of lamps
+      const pz = cz - sz * 0.5, py = cy + sy * 0.16;
+      box(sx * 1.25, sy * 0.36, 0.12, panel, cx, py, pz, -0.35);
+      scr(sx * 0.42, sy * 0.22, 0x2a6a3a, cx - sx * 0.3, py + 0.01, pz + 0.07, -0.35); scr(sx * 0.42, sy * 0.22, 0x6a4a18, cx + sx * 0.3, py + 0.01, pz + 0.07, -0.35);
+      for (let i = 0; i < 5; i++) scr(0.05, 0.03, [0xff3020, 0x30ff60, 0xffb030, 0x30ff60, 0x40a0ff][i], cx + (i - 2) * sx * 0.12, py - sy * 0.12, pz + 0.075, -0.35);
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 16, 1, false, -Math.PI / 2, Math.PI), panel); hood.rotation.z = Math.PI / 2; hood.rotation.y = 0;
+      hood.scale.set(sy * 0.16, sx * 1.3, sz * 0.14); hood.position.set(cx, py + sy * 0.17, pz - 0.02); ck.add(hood);
+      // side consoles with throttle and stick
+      for (const sd of [-1, 1]) { box(sx * 0.22, sy * 0.1, sz * 0.5, panel, cx + sd * sx * 0.68, cy + sy * 0.06, cz + sz * 0.05); scr(sx * 0.12, sz * 0.2, sd < 0 ? 0x30485a : 0x40382a, cx + sd * sx * 0.68, cy + sy * 0.115, cz, -Math.PI / 2); }
+      box(0.05, sy * 0.45, 0.05, grey, cx + sx * 0.12, cy + sy * 0.05, cz - sz * 0.2);   // stick
+      // seat: back, bolsters, headrest
+      const seatM = new THREE.MeshStandardMaterial({ color: 0x33363c, roughness: 0.75, metalness: 0.25 });
+      const bz = cz + sz * 0.42;
+      box(sx * 0.66, sy * 0.75, 0.12, seatM, cx, cy + sy * 0.18, bz, 0.12);
+      for (const sd of [-1, 1]) box(0.08, sy * 0.6, 0.22, seatM, cx + sd * sx * 0.36, cy + sy * 0.12, bz - 0.06, 0.12);
+      box(sx * 0.42, sy * 0.3, 0.16, seatM, cx, cy + sy * 0.7, bz + 0.05, 0.12);
+      scr(sx * 0.3, 0.04, 0xffc020, cx, cy + sy * 0.74, bz + 0.135, Math.PI);   // ejection-seat stripe on the back of the headrest
+      if (me) {   // sit him so the top of his helmet is just under the glass: head and shoulders show above the sill
+        updateFigure(me, 0, 0.016, 0, C.camera, 0); mine.obj.updateMatrixWorld(true);
+        const top = new THREE.Box3().setFromObject(me).max.y, want = mine.obj.localToWorld(new V3(cx, cy + sy * 0.8, cz)).y;
+        me.position.y += want - top; me.position.z = cz + sz * 0.12; seat.copy(me.position);
+      }
+    }
+    // flight helmet for the scramble only (the figure is shared with the lounge, so it comes off in done())
+    let helm = null; const rig = me && me.userData.rig;
+    if (rig && rig.group) {
+      const hg = rig.group; hg.updateMatrixWorld(true); const inv = hg.matrixWorld.clone().invert(), bb = new THREE.Box3(), tb = new THREE.Box3();
+      hg.traverse(o => { if (!o.isMesh || !o.geometry) return; o.geometry.computeBoundingBox(); tb.copy(o.geometry.boundingBox).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)); bb.union(tb); });
+      const sz3 = bb.getSize(new V3()), r = Math.min(sz3.x, sz3.z) * 0.5 * 1.02, c = bb.getCenter(new V3()); c.y = bb.max.y - r * 0.86;
+      const shellM = new THREE.MeshStandardMaterial({ color: 0xd8dce2, roughness: 0.45, metalness: 0.25 }), trimM = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.6 });
+      const visM = new THREE.MeshStandardMaterial({ color: 0x1a1208, roughness: 0.08, metalness: 0.9, emissive: 0x2a1a04 });
+      helm = new THREE.Group(); helm.position.copy(c); hg.add(helm);
+      const open = 1.12;   // face opening half-width (radians), front is +z
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 16, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0, Math.PI * 0.66), shellM); helm.add(shell);
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 8, Math.PI / 2 - open, open * 2, 0, Math.PI * 0.2), shellM); helm.add(crown);
+      const visor = new THREE.Mesh(new THREE.SphereGeometry(r * 1.04, 20, 6, Math.PI / 2 - open, open * 2, Math.PI * 0.2, Math.PI * 0.14), visM); helm.add(visor);   // raised visor on the brow
+      const stripe = new THREE.Mesh(new THREE.SphereGeometry(r * 1.01, 4, 16, Math.PI * 1.5 - 0.09, 0.18, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: 0xc8a020, roughness: 0.5 })); helm.add(stripe);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.06, 6, 36), trimM); rim.rotation.x = Math.PI / 2; rim.position.y = -r * Math.cos(Math.PI * 0.66) * -1; helm.add(rim);
+      rim.position.y = r * Math.cos(Math.PI * 0.66); rim.scale.setScalar(Math.sin(Math.PI * 0.66));
+      for (const sd of [-1, 1]) { const ear = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.32, r * 0.32, r * 0.14, 16), trimM); ear.rotation.z = Math.PI / 2; ear.position.set(sd * r * 0.98, -r * 0.18, 0); helm.add(ear); }
+      const mic = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.03, r * 0.03, r * 0.9, 6), trimM); mic.rotation.set(0, 0, 0.2); mic.rotation.x = Math.PI / 2 - 0.5; mic.position.set(r * 0.62, -r * 0.55, r * 0.45); helm.add(mic);
+    }
+    {
+    }
     const cam = camRig(new V3(-16, 12, 26), new V3(0, 2, -6)); const st = { cam };
     const glowL = new THREE.PointLight(0x7dffa8, 0, 2.2, 2); mine.obj.add(glowL); glowL.position.set(seat.x, seat.y + 0.7, seat.z - 0.9);   // dash glow on the pilot
-    Object.assign(st, { update(t, dt) {
+    Object.assign(st, { done() { if (helm && helm.parent) helm.parent.remove(helm); }, update(t, dt) {
       for (const b of R.beacons) { const k = (Math.sin(t * 7 + b.l.position.x) * 0.5 + 0.5); b.l.intensity = k * 140; b.b.material.color.setRGB(0.4 + k * 0.6, 0.05, 0.02); }
       if (Math.floor(t * 1.25) !== st.kl) { st.kl = Math.floor(t * 1.25); sfx.cue("u_klaxon", 0.4, {}, 520, 0.35, 0.05, "sawtooth"); }
       for (const r of runners) {
@@ -581,7 +636,8 @@ function setStage(name, arg) { if (name === "_keep" && stage) return; if (stage 
 }
 
 // idle / cine render hooks
-C.hooks.idle = dt => { if (!booted && pad.pressed.size) boot(); menuPad(dt); if (stage) { stage.t += dt; stage.update.call(stage, stage.t, dt); } cineStep(dt); };
+C.hooks.idle = dt => { if (!booted && pad.pressed.size) boot(); menuPad(dt); if (stage && !(C.paused && (C.state === "flight" || C.state === "auto"))) {   // a paused mission must not keep ticking the last cutscene (scramble klaxons)
+   stage.t += dt; stage.update.call(stage, stage.t, dt); } cineStep(dt); };
 C.hooks.cine = dt => { cineTick(dt); if (stage) { stage.t += dt; stage.update.call(stage, stage.t, dt); } cineStep(dt); };
 C.hooks.pause = () => pauseGame();
 C.hooks.fullscreen = () => fullscreen();

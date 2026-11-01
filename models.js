@@ -415,10 +415,11 @@ function missile(B, p, len = 2.6, r = 0.2, nose = "red") {
 }
 // build a ship with its canopy removed (glass, sill, frame hoops and spine): for scenes where a
 // separate opening canopy is fitted
-let NO_CANOPY = false;
-export function buildShipOpen(type) { NO_CANOPY = true; try { return buildShip(type); } finally { NO_CANOPY = false; } }
+let NO_CANOPY = false, CAN_FOUND = [];
+// returns the ship plus .canopy = { p, sz } — the exact dome the model would have had, so a hinged replacement fits the fuselage
+export function buildShipOpen(type) { NO_CANOPY = true; CAN_FOUND = []; try { const m = buildShip(type); m.canopy = CAN_FOUND[0] || null; return m; } finally { NO_CANOPY = false; } }
 function canopy(B, p, sz, bows = 3) {
-  if (NO_CANOPY) return;   // the hinged canopy fitted in the scene is the only thing over the cockpit
+  if (NO_CANOPY) { CAN_FOUND.push({ p: [...p], sz: [...sz] }); return; }   // the hinged canopy fitted in the scene is the only thing over the cockpit
   B.add(G.sph(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), "glass", p, [0, 0, 0], sz);
   B.add(G.sph(1, 24, 12), "dark", [p[0], p[1] - sz[1] * 0.05, p[2]], [0, 0, 0], [sz[0] * 1.06, sz[1] * 0.3, sz[2] * 1.03]);
   for (let i = 0; i < bows; i++) { const z = p[2] + sz[2] * (-0.45 + i * 0.9 / Math.max(1, bows - 1)); const k = Math.sqrt(Math.max(0.05, 1 - ((z - p[2]) / sz[2]) ** 2)); B.add(G.torus(1, 0.045, 24), "dark", [p[0], p[1], z], [0, 0, 0], [sz[0] * k, sz[1] * k, 1]); }

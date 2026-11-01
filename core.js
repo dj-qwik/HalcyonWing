@@ -753,15 +753,16 @@ function buildTube() {
   for (const z of [380, 260, 140]) { IK.signPlate(g, Wl, Z1 - z, 9.6, "TUBE 3", "CATAPULT · CENTRE", { w: 3.4, h: 0.8, col: "#e8c060" }); IK.signPlate(g, Wr, z - Z0, 9.6, "CLEAR THE BORE", "LAUNCH IN PROGRESS", { w: 3.6, h: 0.8, col: "#ff6a40" }); }
   // rotating beacons on the roof: amber and red, each a housing, a lit lamp and a sweeping light beam
   const beacons = [], beamTex = M.tex().glow;
-  for (let z = 30, i = 0; z < Z1; z += 36, i++) for (const x of [-5, 5]) {
+  for (let z = 30, i = 0; z < Z1; z += 54, i++) for (const x of [-5, 5]) {   // 8 pairs down the bore (was 12)
     const red = (i + (x > 0 ? 1 : 0)) % 2 === 0, col = red ? 0xff2a10 : 0xffa020;
     const b = new THREE.Group(); b.position.set(x, H - 0.25, z); g.add(b);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.35, 16), new THREE.MeshStandardMaterial({ color: 0x1a1c20, metalness: 0.6, roughness: 0.5 })); b.add(base);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 })); dome.position.y = -0.15; b.add(dome);
     const rot = new THREE.Group(); rot.position.y = -0.4; b.add(rot);
     for (const side of [0, Math.PI]) {
-      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.9, 7, 16, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.035, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
-      beam.geometry.translate(0, -3.5, 0); beam.rotation.set(Math.PI / 2 - 0.35, side, 0); rot.add(beam);
+      // two half-length beams thrown out of opposite sides of the lamp (tilt first, then turn: YXZ order keeps them apart)
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.6, 3.5, 16, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      beam.geometry.translate(0, -1.75, 0); beam.rotation.order = "YXZ"; beam.rotation.set(Math.PI / 2 - 0.35, side, 0); rot.add(beam);
     }
     const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: beamTex, color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); flare.scale.setScalar(1.4); flare.position.y = -0.2; b.add(flare);
     beacons.push({ rot, flare, dome, ph: Math.random() * 6.28, sp: 5 + Math.random() * 1.5 });

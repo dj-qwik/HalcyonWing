@@ -9,6 +9,15 @@ import { drawPortrait } from "./portraits.js";
 import * as CK from "./cockpits.js";
 import * as IK from "./interior.js";
 
+// The logarithmic depth buffer writes gl_FragDepth, which makes GL ignore polygonOffset entirely: every decal, stencil
+// and marking would z-fight its surface. Re-create the offset in log-depth space for any material that asks for one
+// (log depth is uniform in relative distance, so one constant bias holds at every range).
+THREE.Material.prototype.onBeforeCompile = function (sh) {
+  if (!this.polygonOffset) return;
+  const bias = Math.max(1, -(this.polygonOffsetUnits || 0) - (this.polygonOffsetFactor || 0)) * 2.5e-6;
+  sh.fragmentShader = sh.fragmentShader.replace("#include <logdepthbuf_fragment>", "#include <logdepthbuf_fragment>\n#ifdef USE_LOGDEPTHBUF\ngl_FragDepth -= " + bias.toExponential(3) + ";\n#endif");
+};
+THREE.Material.prototype.customProgramCacheKey = function () { return this.polygonOffset ? "po" + this.polygonOffsetUnits + "/" + this.polygonOffsetFactor : ""; };
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const K = 0.5;               // world units per second per KPS
 const DEG = Math.PI / 180;

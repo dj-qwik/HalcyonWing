@@ -98,6 +98,10 @@ let stage = null;
 function put(type, pos, rot = [0, 0, 0], model) {
   const r = M.buildShip(model || type); r.obj.position.set(...pos); r.obj.rotation.set(...rot); C.world.add(r.obj); return r;
 }
+// a figure perched on a bar stool (seat top 0.82) sits with its hips on the cushion: the seated pose rests 0.40 above its origin
+const sitY = sp => sp.pose === "sit" ? 0.42 : 0;
+// ships parked on a deck: keep the lowest point of the hull above the plating (bigger ships ride higher)
+function park(r, clear = 0.35) { r.obj.updateMatrixWorld(true); const lo = new THREE.Box3().setFromObject(r.obj).min.y; if (lo < clear) r.obj.position.y += clear - lo; return r; }
 function glowEngines(r, k = 1) { for (const e of r.eng || []) e.scale.setScalar(e.userData.base * k * (0.9 + Math.random() * 0.2)); }
 function fwd(o) { return new V3(0, 0, -1).applyQuaternion(o.quaternion); }
 function aim(o, p) { o.lookAt(p); o.rotateY(Math.PI); }
@@ -131,7 +135,7 @@ function lounge() {
 function interior(red) {
   baseStage({ hue: red ? 0.0 : 0.6 }); C.indoor = true;
   const R = ROOMS.buildHangar(C.world, !!red);
-  return ["lancer", "kestrel", "lancer", "warden"].map((t, i) => { const p = R.pads[i + 1]; return put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); });
+  return ["lancer", "kestrel", "lancer", "warden"].map((t, i) => { const p = R.pads[i + 1]; return park(put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0])); });
 }
 const STAGES = {
   title() {
@@ -405,7 +409,7 @@ Object.assign(STAGES, {
     const slot = { ricochet: 0, rabbit: 1, deacon: 2, spark: 3, halo: 4, ember: 5, varga: 6, voss: 4, vesper: 8, frost: 9 };
     const figs = [];
     const used = new Set(), spotFor = id => { const pref = ["ricochet", "rabbit"].includes(id) ? [0, 1, 9] : [9, 8, 4, 1]; const k = pref.find(i => !used.has(i)) ?? slot[id] ?? 8; used.add(k); return k; };
-    for (const id of present) { const sp = R.spots[spotFor(id)]; if (sp.pose === "sitTable") R.chairsFor(sp); const f = place(id, [sp.p[0], sp.pose === "sit" ? 0.33 : 0, sp.p[2]], sp.ry, sp.pose); if (f) { if (sp.pose === "stand") { const e = R.establish.pos; f.rotation.y = Math.atan2(e.x - sp.p[0], e.z - sp.p[2]); } figs.push({ id, f }); } }
+    for (const id of present) { const sp = R.spots[spotFor(id)]; if (sp.pose === "sitTable") R.chairsFor(sp); const f = place(id, [sp.p[0], sitY(sp), sp.p[2]], sp.ry, sp.pose); if (f) { if (sp.pose === "stand") { const e = R.establish.pos; f.rotation.y = Math.atan2(e.x - sp.p[0], e.z - sp.p[2]); } figs.push({ id, f }); } }
     paintKillboard(R.killboard.canvas); R.killboard.tex.needsUpdate = true;
     { const x = R.wallScreen.canvas.getContext("2d"); x.fillStyle = "#020610"; x.fillRect(0, 0, 768, 432); x.fillStyle = "#78d0ff"; x.font = "bold 40px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.fillText("CONCORD NAVY NEWSNET", 384, 180); x.font = "26px 'Share Tech Mono', monospace"; x.fillText((MISSIONS[camp.current]?.system || "").toUpperCase(), 384, 240); R.wallScreen.tex.needsUpdate = true; }
     const home = R.establish; const cam = camRig(home.pos, home.look);
@@ -441,7 +445,7 @@ Object.assign(STAGES, {
     baseStage({ ...hubEnv(), fov: 38 }); C.sun.intensity = 0; C.fill.intensity = 0.03; C.bloom.strength = 1.1;
     const R = ROOMS.buildHangar(C.world, false); C.indoor = true;
     const hl = []; R.g.traverse(o => { if (o.isLight) { hl.push([o, o.intensity]); o.intensity = 0; } });
-    const P = new V3(0, 2.2, -12); const s = put(t0, [P.x, P.y, P.z], [0, Math.PI + 0.55, 0]); const size = Math.max(5, s.radius); console.log('reveal radius', s.radius);
+    const P = new V3(0, 2.2, -12); const s = park(put(t0, [P.x, P.y, P.z], [0, Math.PI + 0.55, 0])); P.y = s.obj.position.y; const size = Math.max(5, s.radius);
     const banks = [-1, 0, 1].map((i, k) => {
       const L = new THREE.SpotLight(0xfff1d8, 0, 70, 0.42, 0.55, 2); L.position.set(i * size * 0.8, 19, P.z + i * 2.5); L.target.position.set(P.x + i * size * 0.25, P.y, P.z); C.world.add(L, L.target);
       const h = 17, beam = new THREE.Mesh(new THREE.ConeGeometry(size * 0.42, h, 40, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff0d0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
@@ -469,7 +473,7 @@ Object.assign(STAGES, {
     baseStage({ ...hubEnv(), fov: 50 }); C.sun.intensity = 0.4; C.fill.intensity = 0.2;
     const R = ROOMS.buildHangar(C.world, false); C.indoor = true;
     const types = ["kestrel", "lancer", "warden", "wraith", "longbow"]; const ships = [];
-    types.forEach((t, i) => { const p = R.pads[i]; const s = put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0]); ships.push({ t, s }); });   // nose to the camera, a slight splay
+    types.forEach((t, i) => { const p = R.pads[i]; const s = park(put(t, [p[0], 2.2, p[2]], [0, Math.PI + (p[0] < -1 ? -0.12 : p[0] > 1 ? 0.12 : 0), 0])); ships.push({ t, s }); });   // nose to the camera, a slight splay
     // a prototype the player isn't cleared for stays under R&D's tarp
     const secret = new Set(["wraith"].filter(t => !unlockedShips(camp).includes(t)));
     for (const sh of ships) if (secret.has(sh.t)) { sh.s.obj.updateMatrixWorld(true); const tp = ROOMS.makeTarp(sh.s.obj); C.world.add(tp); sh.s.obj.visible = false; sh.secret = true; sh.s.eng = []; }
@@ -489,7 +493,7 @@ Object.assign(STAGES, {
     const marks = [{ p: [0.9, 0, -1.2], ry: -0.4 }, { p: [-0.7, 0, -1.6], ry: 0.5 }, { p: [2.2, 0, -2.4], ry: -0.7 }];
     const figs = {}; who.forEach((id, i) => { const f = place(id, marks[i % 3].p, marks[i % 3].ry, id === "varga" && shot.medal ? "stand" : "stand"); if (f) figs[id] = f; });
     const bg = castReady() && camp ? crewPresent().filter(id => !figs[id]).slice(0, 3) : [];
-    const spots = [R.spots[2], R.spots[0], R.spots[4]]; bg.forEach((id, i) => { const sp = spots[i]; if (sp.pose === "sitTable") R.chairsFor(sp); const f = place(id, sp.p, sp.ry, sp.pose); if (f) figs["bg_" + id] = f; });
+    const spots = [R.spots[2], R.spots[0], R.spots[4]]; bg.forEach((id, i) => { const sp = spots[i]; if (sp.pose === "sitTable") R.chairsFor(sp); const f = place(id, [sp.p[0], sitY(sp), sp.p[2]], sp.ry, sp.pose); if (f) figs["bg_" + id] = f; });
     const cam = camRig(new V3(0.2, 1.6, 2.2), new V3(0.2, 1.4, -1.4)); const st = { cam, figs, R };
     let side = 1, lastF = null;
     const broadcast = shot.scene === "broadcast";
@@ -538,10 +542,10 @@ Object.assign(STAGES, {
     const ms = shot.ms; baseStage({ ...hubEnv(), fov: 52 }); C.sun.intensity = 0.3; C.fill.intensity = 0.15;
     const R = ROOMS.buildHangar(C.world, true); C.indoor = true;
     const myType = ms.ship, wingType = ms.ship === "wraith" ? "warden" : ms.ship;
-    const mine = M.buildShipOpen(myType); mine.obj.position.set(0, 2.2, -12); C.world.add(mine.obj);   // no fixed canopy frame: the hinged canopy below is the only one
+    const mine = M.buildShipOpen(myType); mine.obj.position.set(0, 2.2, -12); C.world.add(mine.obj); park(mine);   // no fixed canopy frame: the hinged canopy below is the only one
     const fit = mine.canopy; const can = ROOMS.makeCanopy(myType, fit); mine.obj.add(can); can.rotation.x = 1.15;   // hinged at the rear: open = front lifted up
     const wsz = new THREE.Box3().setFromObject(M.buildShip(wingType).obj).getSize(new V3());   // measure, then park with clearance
-    const others = (ms.wing || []).map((w, i) => ({ w, s: put(wingType, [(i % 2 ? 1 : -1) * (wsz.x + 4) * (1 + Math.floor(i / 2) * 0.5), 2.2, -6 - Math.floor(i / 2) * (wsz.z + 6)], [0, i % 2 ? -0.12 : 0.12, 0]) }));
+    const others = (ms.wing || []).map((w, i) => ({ w, s: park(put(wingType, [(i % 2 ? 1 : -1) * (wsz.x + 4) * (1 + Math.floor(i / 2) * 0.5), 2.2, -6 - Math.floor(i / 2) * (wsz.z + 6)], [0, i % 2 ? -0.12 : 0.12, 0])) }));
     const runners = [];
     // the player is already strapped in, canopy up; the wingmen sprint to their fighters across the deck
     const me = place("player", [0, 0, 0], Math.PI, "sitBack");

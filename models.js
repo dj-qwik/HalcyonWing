@@ -283,6 +283,15 @@ function boxUV(g, scale) {
   g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 }
 const NOUV = new Set(["glow", "glass", "decal", "light", "lightR", "lightG", "heat", "lit"]);
+
+// audit-only provenance: when the test harness sets globalThis.__AUDIT_SRC, every piece remembers the code line that added it
+function auditSrc(g, skip) {
+  const T = globalThis.__AUDIT_SRC; if (!T) return;
+  const st = new Error().stack.split("\n").slice(2).filter(l => !skip.test(l));
+  const loc = st.slice(0, 3).map(l => (l.match(/([\w-]+\.js):(\d+)/) || [])[0]).filter(Boolean).join(" < ");
+  let i = T.indexOf(loc); if (i < 0) { T.push(loc); i = T.length - 1; }
+  g.setAttribute("auditSrc", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(i), 1));
+}
 class Builder {
   constructor(fac, caps) { this.m = mats(fac, caps); this.parts = {}; this.extra = []; this.fac = fac; }
   add(geo, mk, p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1], flat = false, mx = false) {
@@ -290,6 +299,7 @@ class Builder {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
     g.clearGroups(); for (const k of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(k)) g.deleteAttribute(k);
     if (!g.attributes.uv) g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    auditSrc(g, /Builder\./);
     const m = new THREE.Matrix4().compose(new THREE.Vector3(...p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...r)), new THREE.Vector3(...s));
     g.applyMatrix4(m); if (flat) g.computeVertexNormals();
     if (mx) { // true mirror across x = 0: flip x, then restore triangle winding
@@ -356,12 +366,16 @@ function greeble(B, R, area, n, mk = "dark") {
   const [x0, x1, y, z0, z1, f] = area;
   for (let i = 0; i < n; i++) {
     const w = 3 + R() * 22, h = 2 + R() * 10, d = 3 + R() * 26;
-    B.add(G.box(w, h, d), R() < 0.3 ? "metal" : mk, [x0 + R() * (x1 - x0), y + f * h / 2, z0 + R() * (z1 - z0)]);
+    B.add(G.box(w, h, d), R() < 0.3 ? "metal" : mk, [x0 + R() * (x1 - x0), y + f * (h / 2 - 0.2 - R() * 0.3), z0 + R() * (z1 - z0)]);
   }
 }
 
 // ---------------------------------------------------------------- DETAIL KIT
 // loft: smooth hull through superellipse cross-sections. s = {z, w, h, y?, x?, n? (2 round .. 8 boxy), bot? (lower-half scale)}
+function inset(secs, k = 0.004) {
+  const a = secs[0].z, b = secs[secs.length - 1].z, d = (b - a) * k, out = secs.map(s => ({ ...s }));
+  out[0].z += d; out[out.length - 1].z -= d; return out;
+}
 function loft(secs, N = 28) {
   const pos = [], idx = [];
   for (const s of secs) {
@@ -411,7 +425,7 @@ function missile(B, p, len = 2.6, r = 0.2, nose = "red") {
   B.add(G.cyl(r, r, len * 0.72, 10), "white", [p[0], p[1], p[2]], [Math.PI / 2, 0, 0]);
   B.add(G.cone(r, len * 0.28, 10), nose, [p[0], p[1], p[2] - len * 0.5], [-Math.PI / 2, 0, 0]);
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; B.add(G.box(r * 0.12, r * 2.6, len * 0.16), "dark", [p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r, p[2] + len * 0.3], [0, 0, a]); }
-  B.add(G.box(r * 0.8, r * 1.2, len * 0.5), "dark", [p[0], p[1] + r * 1.3, p[2]]);       // pylon
+  B.add(G.box(r * 0.8, r * 1.1, len * 0.5), "dark", [p[0], p[1] + r * 1.25, p[2]]);       // pylon
 }
 // build a ship with its canopy removed (glass, sill, frame hoops and spine): for scenes where a
 // separate opening canopy is fitted
@@ -427,7 +441,7 @@ function canopy(B, p, sz, bows = 3) {
 }
 function intake(B, p, w, h, d) {
   B.add(G.box(w, h, d), "hull", p); B.add(G.box(w * 0.78, h * 0.7, 0.1), "dark", [p[0], p[1], p[2] - d / 2 - 0.02]);
-  for (let i = 1; i < 4; i++) B.add(G.box(w * 0.78, 0.04, 0.12), "metal", [p[0], p[1] - h * 0.35 + i * h * 0.175, p[2] - d / 2]);
+  for (let i = 1; i < 4; i++) B.add(G.box(w * 0.74, 0.04, 0.12), "metal", [p[0], p[1] - h * 0.35 + i * h * 0.175, p[2] - d / 2]);
 }
 function antenna(B, p, len, mk = "light") { B.add(G.cyl(0.03, 0.05, len, 5), "metal", [p[0], p[1] + len / 2, p[2]]); B.add(G.sph(0.08, 6, 4), mk, [p[0], p[1] + len, p[2]]); }
 function rcs(B, p, dir = 1) { B.add(G.box(0.36, 0.36, 0.36), "dark", p); for (const [dx, dy] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) B.add(G.cyl(0.05, 0.07, 0.12, 6), "metal", [p[0] + dx, p[1] + dy, p[2] + dir * 0.2], [Math.PI / 2, 0, 0]); }
@@ -600,7 +614,7 @@ const FIGHTERS = {
     canopy(B, [0, 1.2, -3.6], [0.72, 0.5, 2.2], 2);
     for (const s of [-1, 1]) {
       B.add(G.box(0.22, 2.4, 3.2), "dark", [s * 3.6, 1.4, 4.1], [0, 0, -s * 0.55], [1, 1, 1], true);
-      B.add(G.box(2.2, 0.34, 0.6), "glow", [s * 1.7, 0.1, 5.9]); B.add(G.box(2.4, 0.08, 0.9), "metal", [s * 1.7, 0.3, 5.7]);
+      B.add(G.box(2.2, 0.34, 0.6), "glow", [s * 1.7, 0.1, 5.93]); B.add(G.box(2.4, 0.08, 0.9), "metal", [s * 1.7, 0.3, 5.7]);
       B.add(G.box(0.05, 0.04, 9), "glow", [s * 3.6, -0.02, -0.6], [0, s * 0.42, 0]);                         // light seams
       B.add(G.box(0.04, 0.04, 6.4), "glow", [s * 6.5, -0.02, 2.8], [0, s * 1.05, 0]);
       gun(B, [s * 2.4, -0.55, -4.4], 2.4, 0.13); gun(B, [s * 5.2, -0.45, 0.6], 2.4, 0.13);
@@ -730,7 +744,7 @@ const CAPS = {
     const half = z => secAt(S, z).w / 2;
     B.add(loft(S, 48), "hull");
     // armour strakes and the painted boot-top band
-    for (const [yo, hh, mk] of [[-20, 4, "hull"], [21, 3, "hull"], [-27.5, 3.2, "accent"]]) B.add(loft(S.slice(0, 4).map(s => ({ ...s, w: s.w + 1.8, h: hh, y: yo, n: 2 })), 40), mk);
+    for (const [yo, hh, mk] of [[-20, 4, "hull"], [21, 3, "hull"], [-27.5, 3.2, "accent"]]) B.add(loft(inset(S.slice(0, 4).map(s => ({ ...s, w: s.w + 1.8, h: hh, y: yo, n: 2 }))), 40), mk);
     // flank frame stiffeners (forward of the sponsons) and lit window decks
     for (let z = -360; z < 20; z += 18) { if (z > -322 && z < -68) continue; for (const sg of [-1, 1]) B.side(sg, G.box(1.0, 36, 1.4), "dark", [half(z) + 0.45, 0, z]); }
     for (const sg of [-1, 1]) for (let z = -366; z < 16; z += 18) { sideDecal(B, S, 40, sg, z + 9, 26, [15, 1.9], "lit", 0.6); sideDecal(B, S, 40, sg, z + 9, -15, [15, 1.9], "lit", 0.6); if (z > -80 || z < -320) sideDecal(B, S, 41, sg, z + 9, 4, [15, 7], "lit", 0.6); }
@@ -782,7 +796,7 @@ const CAPS = {
       // ---- interior dressing: catwalks, pipe runs, gantry crane, racks, tie-downs, hazard lip, stencils
       for (const sg of [-1, 1]) {
         const wx = sg * (X - 2.4);
-        B.add(G.box(4.4, 0.4, D - 6), "dark", [wx, Y1 - 11, ZC]); B.add(G.box(4.4, 0.25, D - 6), "metal", [wx, Y1 - 10.7, ZC]);   // catwalk with grating
+        B.add(G.box(4.4, 0.4, D - 6), "dark", [wx, Y1 - 11, ZC]); B.add(G.box(4.25, 0.25, D - 6.2), "metal", [wx, Y1 - 10.7, ZC]);   // catwalk with grating
         B.add(G.box(0.25, 0.25, D - 6), "metal", [sg * (X - 4.6), Y1 - 8.8, ZC]); B.add(G.box(0.2, 0.2, D - 6), "metal", [sg * (X - 4.6), Y1 - 9.8, ZC]);   // rails
         for (let z = Z0 + 6; z < Z1 - 3; z += 5.5) { B.add(G.box(0.25, 2.2, 0.25), "metal", [sg * (X - 4.6), Y1 - 9.8, z]); B.add(G.box(4.4, 0.4, 0.4), "dark", [wx, Y1 - 11.5, z]); }
         // pipe bundle low on the wall: coolant, fuel (orange), power, with clamps
@@ -854,7 +868,7 @@ const CAPS = {
     B.add(G.box(118, 64, 40), "dark", [0, 6, 370]);
     for (let x = -50; x <= 50; x += 7) B.add(G.box(1.2, 12, 34), "metal", [x, 44, 368]);
     for (const sg of [-1, 1]) for (let y = -18; y <= 30; y += 6) B.side(sg, G.box(10, 1.2, 34), "metal", [64, y, 368]);
-    for (const [x, y] of [[-42, -10], [42, -10], [-42, 24], [42, 24]]) { nozzle(B, [x, y, 402], 17, 26); B.add(G.torus(19, 1.6, 28), "metal", [x, y, 389]); B.add(G.cyl(20, 20, 8, 28), "hull2", [x, y, 386], [Math.PI / 2, 0, 0]); }
+    for (const [x, y] of [[-42, -10], [42, -10], [-42, 24], [42, 24]]) { nozzle(B, [x, y, 402], 17, 26); B.add(G.torus(19, 1.6, 28), "metal", [x, y, 389]); B.add(G.cyl(20, 20, 8, 28), "hull2", [x, y, 386.4], [Math.PI / 2, 0, 0]); }
     const out = capBuild(B, R, [[50, 38, -250, 1], [-50, 38, -250, 1], [-50, 38, 60, 1], [50, 38, 260, 1], [-50, 38, 260, 1], [0, -30, -300, -1], [60, -30, 0, -1], [-60, -30, 0, -1], [0, -30, 250, -1], [IX, 124, 100, 1]], "concord", 1.6);
     navLights(out.g, [-75, 34, 0], [75, 34, 0]);
     for (const p of [[IX, 179, 122], [0, 30, -534], [0, 40, 395]]) { const st = engineSprite(0xffffff, 6); st.position.set(...p); st.userData.blink = 1; out.g.add(st); }
@@ -940,7 +954,7 @@ const CAPS = {
     const B = new Builder("concord", 0);
     const S = [{ z: -15.5, w: 0.6, h: 0.5, y: -0.6 }, { z: -14, w: 4, h: 3, y: -0.4 }, { z: -10, w: 7.4, h: 5.6, y: 0.1, n: 3, bot: 0.8 }, { z: -4, w: 9, h: 7, y: 0.4, n: 3.6, bot: 0.85 }, { z: 10, w: 9, h: 7, y: 0.4, n: 4, bot: 0.85 }, { z: 14, w: 7.6, h: 6, y: 0.4, n: 4 }];
     B.add(loft(S, 32), "hull");
-    B.add(loft(S.slice(1).map(s => ({ ...s, w: s.w + 0.25, h: s.h * 0.16, y: s.y - s.h * 0.08 }))), "accent");     // waist stripe
+    B.add(loft(inset(S.slice(1).map(s => ({ ...s, w: s.w + 0.25, h: s.h * 0.16, y: s.y - s.h * 0.08 })))), "accent");     // waist stripe
     // windscreen: three panes on the sloped nose, framed
     const wz = -10.6, wy = surfY(S, 0, wz) + 0.12;
     for (const [x, ry] of [[0, 0], [-1.9, 0.5], [1.9, -0.5]]) B.add(G.box(1.8, 0.1, 3.2), "glass", [x, wy - Math.abs(x) * 0.25, wz], [-0.36, ry, x * 0.12]);
@@ -974,7 +988,7 @@ const CAPS = {
     // civilian lifepod: white capsule, orange bands, nose hatch with porthole, beacon mast
     const B = new Builder("concord", 0);
     B.add(loft([{ z: -3.5, w: 1.6, h: 1.6 }, { z: -3.1, w: 3.4, h: 3.4 }, { z: -1.8, w: 4.4, h: 4.4 }, { z: 2.2, w: 4.6, h: 4.6, n: 2.2 }, { z: 3.3, w: 3.6, h: 3.6 }], 24), "white");
-    for (const z of [-1.2, 1.7]) { B.add(G.cyl(2.27, 2.27, 0.55, 28), "orange", [0, 0, z], [Math.PI / 2, 0, 0]); B.add(G.cyl(2.3, 2.3, 0.08, 28), "dark", [0, 0, z + 0.3], [Math.PI / 2, 0, 0]); }
+    for (const z of [-1.2, 1.7]) { B.add(G.cyl(2.34, 2.34, 0.55, 28), "orange", [0, 0, z], [Math.PI / 2, 0, 0]); B.add(G.cyl(2.38, 2.38, 0.08, 28), "dark", [0, 0, z + 0.3], [Math.PI / 2, 0, 0]); }
     B.add(G.torus(1.25, 0.14, 20), "dark", [0, 0, -3.35]); B.add(G.cyl(0.7, 0.7, 0.12, 14), "glass", [0, 0, -3.55], [Math.PI / 2, 0, 0]);
     for (const a of [0.6, 2.5, 4.4]) B.add(G.cyl(0.32, 0.32, 0.12, 10), "glass", [Math.cos(a) * 2.24, Math.sin(a) * 2.24, 0.2], [0, 0, a + Math.PI / 2]);
     B.add(G.lathe([[0.5, 0], [0.7, 0.5], [0.95, 1.1], [0.85, 1.12]], 14), "dark", [0, 0, 3.2], [Math.PI / 2, 0, 0]);
@@ -1012,7 +1026,7 @@ const CAPS = {
     // reactor stern
     const ST = [{ z: 396, w: 70, h: 60, n: 4 }, { z: 420, w: 150, h: 112, n: 5 }, { z: 522, w: 150, h: 112, n: 5 }, { z: 548, w: 120, h: 90, n: 4 }];
     B.add(loft(ST, 32), "hull");
-    B.add(loft(ST.map(s => ({ ...s, w: s.w + 4, h: s.h * 0.2 }))), "accent");
+    B.add(loft(inset(ST.map(s => ({ ...s, w: s.w + 4, h: s.h * 0.2 })))), "accent");
     for (const [x, y] of [[-36, -24], [36, -24], [-36, 24], [36, 24]]) nozzle(B, [x, y, 560], 20, 28);
     B.add(G.wedge(46, 40, 70, 0.7, 0.7), "hull2", [0, 72, 470]); B.add(G.box(54, 10, 26), "hull", [0, 96, 458]);
     B.decal(40, [0, 96.3, 444.8], [0, Math.PI, 0], [48, 6], "lit"); for (let k = 0; k < 3; k++) B.decal(41, [0, 64 + k * 10, 434.4 + k * 1.6], [0, Math.PI, 0], [34, 8], "lit");
@@ -1051,8 +1065,8 @@ const CAPS = {
     for (let a = 0; a < 4; a++) { const an = a * Math.PI / 2 + Math.PI / 4, c = Math.cos(an), s = Math.sin(an); truss(B, [c * 76, 0, s * 76], [c * 278, 0, s * 278], 16, 9, "metal", 0.8); strut(B, [c * 76, 0, s * 76], [c * 278, 0, s * 278], 5, "hull2", 10); }
     // docking piers off the ring
     for (const sg of [-1, 1]) {
-      const z = sg * 324; B.add(G.box(16, 12, 90), "hull2", [0, -8, z + sg * 45]); B.add(G.box(40, 4, 16), "dark", [0, -8, z + sg * 82]);
-      for (const x of [-18, 18]) { B.add(G.box(4, 20, 4), "metal", [x, -16, z + sg * 82]); runLight(B, [x, -27, z + sg * 82], "lightG", 1.2); }
+      const z = sg * 324; B.add(G.box(16, 12, 90), "hull2", [0, -8, z + sg * 45]); B.add(G.box(40, 4, 16), "dark", [0, -8, z + sg * 82.4]);
+      for (const x of [-18, 18]) { B.add(G.box(4, 19.6, 4), "metal", [x, -16.2, z + sg * 82]); runLight(B, [x, -27, z + sg * 82], "lightG", 1.2); }
       for (let k = 0; k < 6; k++) runLight(B, [0, -1.5, z + sg * (10 + k * 14)], "light", 0.9);
       B.decal(2, [0, -1.9, z + sg * 45], [-Math.PI / 2, 0, 0], [12, 80]);
     }
@@ -1125,7 +1139,7 @@ const CAPS = {
     B.mirror(G.cyl(24, 24, 3, 12), "glow", [50, 0, 431], [Math.PI / 2, 0, 0]);
     for (let i = 0; i < 9; i++) B.add(G.cone(6, 50, 5), "bone", [0, 56, -300 + i * 70], [-0.6, 0, 0]);
     for (let z = -330; z <= 330; z += 60) B.add(G.torus(96 - Math.abs(z) * 0.08, 5, 28), "bone", [0, 0, z], [0, 0, 0], [1, 0.62, 1]);       // ribs
-    for (let z = -280; z < 320; z += 40) for (const s of [-1, 1]) { B.add(G.box(3, 10, 22), "glow", [s * 104, 4, z]); B.add(G.box(5, 14, 26), "dark", [s * 103, 4, z]); }
+    for (let z = -280; z < 320; z += 40) for (const s of [-1, 1]) { B.add(G.box(3, 10, 22), "glow", [s * 104.3, 4, z]); B.add(G.box(5, 14, 26), "dark", [s * 103, 4, z]); }
     B.decal(28, [0, 58, -330], [-Math.PI / 2 + 0.3, 0, 0], [90, 50]);
     for (const s of [-1, 1]) { B.decal(24 + (s > 0 ? 0 : 2), [s * 250, 13, 80], [-Math.PI / 2, 0, 0], [80, 80]); B.decal(30, [s * 106, -10, 140], [0, s * Math.PI / 2, 0], [80, 50]); }
     greeble(B, R, [-60, 60, 55, -350, 350, 1], 50);
@@ -1137,7 +1151,7 @@ const CAPS = {
     const B = new Builder("vharr", 1), R = rng(24);
     const S = [{ z: -960, w: 20, h: 12 }, { z: -900, w: 120, h: 60, n: 2.6, bot: 0.8 }, { z: -700, w: 300, h: 150, n: 3, bot: 0.8 }, { z: -200, w: 440, h: 230, n: 3.2, bot: 0.8 }, { z: 400, w: 420, h: 220, n: 3.4, bot: 0.8 }, { z: 800, w: 340, h: 180, n: 3.4, bot: 0.8 }, { z: 900, w: 300, h: 160, n: 3, bot: 0.8 }];
     B.add(loft(S, 36), "bone");
-    B.add(loft(S.slice(1).map(s => ({ ...s, w: s.w + 8, h: s.h * 0.12, y: -s.h * 0.05 }))), "red");                  // blood belt
+    B.add(loft(inset(S.slice(1).map(s => ({ ...s, w: s.w + 8, h: s.h * 0.12, y: -s.h * 0.05 })))), "red");                  // blood belt
     // ribs and dorsal crest
     for (let z = -760; z < 860; z += 80) { const s = secAt(S, z); B.add(new THREE.TorusGeometry(1, 0.035, 6, 32, Math.PI), "dark", [0, s.y, z], [0, 0, 0], [s.w / 2 * 1.02, s.h / 2 * 1.04, 1]); }
     for (let i = 0; i < 16; i++) { const z = -760 + i * 100; B.add(G.cone(16, 120 - Math.abs(i - 6) * 5, 5), "bone", [0, surfY(S, 0, z) + 30, z], [0.75, 0, 0]); B.add(G.box(34, 30, 60), "red", [0, surfY(S, 0, z) + 4, z]); }
@@ -1145,7 +1159,7 @@ const CAPS = {
     for (let i = 0; i < 14; i++) for (const s of [-1, 1]) { const z = -600 + i * 100; B.add(G.cone(14, 150 + R() * 70, 5), "bone", [surfX(S, s, z, 30) - s * 10, 30, z], [0.5, 0, -s * 1.1]); }
     for (const s of [-1, 1]) {
       for (let z = -640; z < 820; z += 36) sideDecal(B, S, 42, s, z, -6, [26, 16], "lit", 0.8);
-      for (let z = -560; z < 760; z += 120) { const x = surfX(S, s, z, -40); B.add(G.box(14, 30, 70), "dark", [x - s * 4, -40, z]); B.add(G.box(3, 22, 60), "glow", [x + s * 3.5, -40, z]); }
+      for (let z = -560; z < 760; z += 120) { const x = surfX(S, s, z, -40); B.add(G.box(14, 30.6, 70.6), "dark", [x - s * 4, -40, z]); B.add(G.box(3, 22, 60), "glow", [x + s * 3.5, -40, z]); }
       sideDecal(B, S, 24 + (s > 0 ? 2 : 0), s, -420, 40, [180, 180]); sideDecal(B, S, 30, s, -800, 0, [120, 60]); sideDecal(B, S, 29, s, 120, 36, [120, 120]); sideDecal(B, S, 27, s, 520, 20, [140, 140]);
     }
     topDecal(B, S, 28, 0, -780, [200, 110], "decal", 0.8);
@@ -1232,7 +1246,7 @@ const CAPS = {
     B.add(G.torus(130, 8, 48), "bone", [0, 40, 0], [Math.PI / 2, 0, 0]);
     for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6, c = Math.cos(a), s = Math.sin(a); B.add(G.cone(5, 34, 5), "bone", [c * 152, 40, s * 152], [0, 0, 0], [1, 1, 1]); strut(B, [c * 130, 40, s * 130], [c * 136, 40, s * 136], 3, "bone"); if (k % 2) strut(B, [c * 54, 66, s * 54], [c * 126, 42, s * 126], 3.5, "dark"); }
     B.add(G.cyl(16, 16, 300, 12), "glow", [0, 210, 0]);
-    for (let y = 90; y < 350; y += 30) { B.add(G.cyl(24, 24, 8, 8), "dark", [0, y, 0]); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + y * 0.02; B.add(G.cone(3, 16, 4), "bone", [Math.cos(a) * 24, y + 6, Math.sin(a) * 24], [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6]); } }
+    for (let y = 90; y < 350; y += 30) { B.add(G.cyl(24, 24, 8, 8), "dark", [0, y, 0], [0, Math.PI / 8, 0]); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + y * 0.02; B.add(G.cone(3, 16, 4), "bone", [Math.cos(a) * 24, y + 6, Math.sin(a) * 24], [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6]); } }
     for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2, r = k ? 18 : 0; B.add(G.cone(k ? 6 : 10, k ? 40 : 70, 5), "glow", [Math.cos(a) * r, 380, Math.sin(a) * r], [Math.sin(a) * 0.4, 0, -Math.cos(a) * 0.4]); }
     const g = B.build(); const s = engineSprite(0xff4020, 400); s.position.y = 120; g.add(s);
     return { obj: g, turrets: [], eng: [] };

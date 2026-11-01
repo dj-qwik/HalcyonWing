@@ -164,6 +164,15 @@ export function kitMats() {
   return MAT;
 }
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, "YXZ"), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+
+// audit-only provenance: when the test harness sets globalThis.__AUDIT_SRC, every piece remembers the code line that added it
+function auditSrc(g, skip) {
+  const T = globalThis.__AUDIT_SRC; if (!T) return;
+  const st = new Error().stack.split("\n").slice(2).filter(l => !skip.test(l));
+  const loc = st.slice(0, 3).map(l => (l.match(/([\w-]+\.js):(\d+)/) || [])[0]).filter(Boolean).join(" < ");
+  let i = T.indexOf(loc); if (i < 0) { T.push(loc); i = T.length - 1; }
+  g.setAttribute("auditSrc", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(i), 1));
+}
 export class Kit {
   constructor() { this.parts = {}; this.M = kitMats(); this.custom = {}; }
   add(geo, mk, p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1]) {
@@ -171,6 +180,7 @@ export class Kit {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
     for (const k of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(k)) g.deleteAttribute(k);
     if (!g.attributes.uv) g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    auditSrc(g, /Kit\./);
     _m.compose(_p.set(...p), _q.setFromEuler(_e.set(r[0], r[1], r[2], "YXZ")), _s.set(...s)); g.applyMatrix4(_m); (this.parts[mk] ||= []).push(g); return this;
   }
   box(w, h, d, mk, p, r) { return this.add(new THREE.BoxGeometry(w, h, d), mk, p, r); }
@@ -237,7 +247,7 @@ export function cableTray(K, R, { y, d = 0.35, w = 0.4, from = 0, to = null } = 
 export function junctionBox(K, R, s, y, { w = 0.42, h = 0.55, d = 0.16 } = {}) {
   K.rbox(w, h, d, 0.015, "paintGrey", R.at(s, y, d / 2), [0, R.ry, 0]); K.box(w * 0.86, h * 0.86, 0.01, "dark", R.at(s, y, d + 0.004), [0, R.ry, 0]);
   K.box(0.04, 0.1, 0.03, "steel", R.at(s + w * 0.36, y, d + 0.02), [0, R.ry, 0]); K.box(w * 0.5, 0.06, 0.012, "paintYellow", R.at(s, y + h * 0.36, d + 0.01), [0, R.ry, 0]);
-  K.box(0.03, 0.03, 0.01, "lightG", R.at(s - w * 0.32, y - h * 0.32, d + 0.012), [0, R.ry, 0]); K.box(0.03, 0.03, 0.01, "lightA", R.at(s - w * 0.24, y - h * 0.32, d + 0.012), [0, R.ry, 0]);
+  K.box(0.03, 0.03, 0.01, "lightG", R.at(s - w * 0.32, y - h * 0.32, d + 0.012), [0, R.ry, 0]); K.box(0.03, 0.03, 0.01, "lightA", R.at(s - w * 0.32 + Math.max(w * 0.08, 0.04), y - h * 0.32, d + 0.012), [0, R.ry, 0]);
   K.rod(R.at(s, y - h / 2, d / 2), R.at(s, 0.05, d / 2), 0.02, "dark", 8);
 }
 export function fireCabinet(K, R, s, y = 1.3) {
@@ -292,7 +302,7 @@ export function ceilingPlane(parent, x0, x1, z0, z1, y, tex, tile = 2.4) {
 // overhead beam (I-section) between two points at ceiling height
 export function iBeam(K, a, b, { h = 0.3, w = 0.18, mk = "metal" } = {}) {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), L = A.distanceTo(B), mid = A.clone().add(B).multiplyScalar(0.5), ry = Math.atan2(B.x - A.x, B.z - A.z);
-  K.box(w, 0.03, L, mk, [mid.x, mid.y + h / 2 - 0.015, mid.z], [0, ry, 0]); K.box(w, 0.03, L, mk, [mid.x, mid.y - h / 2 + 0.015, mid.z], [0, ry, 0]); K.box(0.02, h, L, "dark", mid.toArray(), [0, ry, 0]);
+  K.box(w, 0.03, L, mk, [mid.x, mid.y + h / 2 - 0.015, mid.z], [0, ry, 0]); K.box(w, 0.03, L, mk, [mid.x, mid.y - h / 2 + 0.015, mid.z], [0, ry, 0]); K.box(0.02, h - 0.06, L - 0.004, "dark", mid.toArray(), [0, ry, 0]);   // web sits between the flanges, not flush with them
   for (let t = 0.6; t < L - 0.3; t += 0.9) { const p = A.clone().lerp(B, t / L); for (const o of [-1, 1]) K.box(0.012, h - 0.06, 0.04, "metal", [p.x + Math.cos(ry) * o * 0.05, p.y, p.z - Math.sin(ry) * o * 0.05], [0, ry, 0]); }
 }
 // a lit ceiling fixture: housing with diffuser

@@ -341,7 +341,7 @@ export function buildCockpit(type = "kestrel") {
   // ---- top-of-dash readouts (SET / KPS / fuel / energy)
   for (const [key, x, w] of [["speed", -1.62, 0.34], ["energy", 1.62, 0.34]]) {
     const c = cv(256, 96); const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 96 / 256), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })); m.position.copy(dashPoint(x, -0.55)); m.quaternion.copy(dashQuat(x)); m.translateZ(0.02); g.add(m);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 96 / 256), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })); m.position.copy(dashPoint(x, -0.55)); m.quaternion.copy(dashQuat(x)); m.translateZ(0.04); g.add(m);   // in front of the MFD bezels (0.025) and screens (0.032) it can overlap
     const bz = new THREE.Mesh(new RoundedBoxGeometry(w + 0.04, w * 96 / 256 + 0.04, 0.02, 2, 0.008), blackMat); bz.position.copy(m.position); bz.quaternion.copy(m.quaternion); bz.translateZ(-0.012); g.add(bz);
     D[key] = { canvas: c, ctx: c.getContext("2d"), tex };
   }

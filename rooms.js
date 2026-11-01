@@ -54,8 +54,9 @@ function lamp(parent, p, col, inten, dist, shade = true) {
 }
 function chair(parent, p, ry, mat, padMat) {
   const g = new THREE.Group(); g.position.set(...p); g.rotation.y = ry; parent.add(g);
-  rbox(0.5, 0.08, 0.48, 0.03, padMat, [0, 0.46, 0], g); rbox(0.5, 0.55, 0.07, 0.03, padMat, [0, 0.76, -0.22], g, [0.12, 0, 0]);
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.44, 10), mat); leg.position.y = 0.22; g.add(leg);
+  // seat height matches where a seated crew figure's hips actually rest (pad top 0.41), so nobody sinks into the cushion
+  rbox(0.5, 0.08, 0.48, 0.03, padMat, [0, 0.37, 0], g); rbox(0.5, 0.55, 0.07, 0.03, padMat, [0, 0.67, -0.22], g, [0.12, 0, 0]);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.35, 10), mat); leg.position.y = 0.175; g.add(leg);
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.03, 20), mat); base.position.y = 0.015; g.add(base);
   return g;
 }
@@ -74,7 +75,7 @@ function simPod(parent, p, ry) {
   // hull: tub with a sloped nose, painted white with a red flash
   rbox(1.05, 0.62, 1.7, 0.12, white, [0, 0.55, 0.2], g);
   rbox(0.95, 0.42, 0.9, 0.12, white, [0, 0.62, -0.85], g, [0.32, 0, 0]);
-  rbox(1.07, 0.1, 1.5, 0.04, red, [0, 0.62, 0.3], g);
+  rbox(1.07, 0.1, 1.52, 0.04, red, [0, 0.62, 0.3], g);   // stands proud of the hull at the back, not flush
   rbox(0.4, 0.66, 0.08, 0.03, red, [0, 0.9, 1.04], g);                                  // tail fin
   // cockpit interior: seat, side consoles, attract screen in the nose
   rbox(0.82, 0.12, 0.95, 0.04, dark, [0, 0.86, 0.15], g);
@@ -131,7 +132,7 @@ function dressLounge(g) {
   K.rbox(14, 0.16, 0.5, 0.02, "metal", [0, H - 0.8, -5.66]); K.box(14, 0.025, 0.03, "lightW", [0, H - 0.885, -5.43]);
   IK.handrail(K, IK.run([-6.8, -5.55], [6.8, -5.55]), { y: 1.06, d: 0.12, every: 1.3 });
   for (let x = -6.5; x <= 6.6; x += 2.6) {
-    K.rbox(0.34, H - 1.6, 0.46, 0.04, "metal", [x, 0.95 + (H - 1.75) / 2, -5.78]); K.box(0.2, H - 1.8, 0.02, "dark", [x, 0.95 + (H - 1.75) / 2, -5.54]);
+    K.rbox(0.34, H - 1.6, 0.46, 0.04, "metal", [x, 0.95 + (H - 1.75) / 2, -5.78]); K.box(0.2, H - 1.8, 0.02, "dark", [x, 0.95 + (H - 1.75) / 2, -5.535]);
     for (let y = 1.15; y < H - 0.9; y += 0.22) for (const o of [-1, 1]) K.cyl(0.014, 0.014, 0.02, "steel", [x + o * 0.12, y, -5.54], [Math.PI / 2, 0, 0], 6);
     for (const y of [1.0, H - 0.85]) for (const o of [-1, 1]) K.box(0.05, 0.38, 0.3, "metal", [x + o * 0.26, y + (y < 2 ? 0.17 : -0.17), -5.7], [0, 0, o * (y < 2 ? -0.75 : 0.75)]);   // gussets
     for (const o of [-1, 1]) K.box(0.035, H - 1.75, 0.05, "dark", [x + o * 0.21, 0.95 + (H - 1.75) / 2, -5.98]);                                                       // shutter tracks
@@ -175,7 +176,7 @@ export function buildLounge(parent) {
   }
   // killboard screen on left wall
   const kb = cv(1024, 640); const kbt = new THREE.CanvasTexture(kb); kbt.colorSpace = THREE.SRGBColorSpace;
-  const killboard = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.62), new THREE.MeshBasicMaterial({ map: kbt, toneMapped: false })); killboard.position.set(-6.88, 1.85, -1.2); killboard.rotation.y = Math.PI / 2; g.add(killboard);
+  const killboard = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.62), new THREE.MeshBasicMaterial({ map: kbt, toneMapped: false })); killboard.position.set(-6.86, 1.85, -1.2); killboard.rotation.y = Math.PI / 2; g.add(killboard);
   rbox(0.1, 1.82, 2.8, 0.03, darkM, [-6.93, 1.85, -1.2], g);
   // wall screen (broadcasts) on back wall
   const ws = cv(768, 432); const wst = new THREE.CanvasTexture(ws); wst.colorSpace = THREE.SRGBColorSpace;
@@ -311,7 +312,7 @@ export function buildHangar(parent, alert = false) {
   // clutter: crates, carts, fuel lines, missile racks
   const crate = new THREE.MeshStandardMaterial({ color: 0x4a5a3a, roughness: 0.7, map: deckTex("#4a5a3a", false) });
   const R = rnd(4);
-  for (let i = 0; i < 14; i++) { const s = 0.9 + R() * 0.9; rbox(s, s, s, 0.05, crate, [(R() < 0.5 ? -1 : 1) * (22 + R() * 6), s / 2, -40 + R() * 70], g, [0, R() * 1, 0]); }
+  for (let i = 0; i < 14; i++) { const s = 0.9 + R() * 0.9; rbox(s, s, s, 0.05, crate, [(R() < 0.5 ? -1 : 1) * (26 + R() * 2.2), s / 2, -40 + R() * 70], g, [0, R() * 1, 0]); }
   for (let i = 0; i < 4; i++) { const c = new THREE.Group(); c.position.set(-8 + i * 6, 0, 10 + (i % 2) * 6); g.add(c); rbox(1.6, 0.6, 2.6, 0.08, new THREE.MeshStandardMaterial({ color: 0xc8a020, roughness: 0.6 }), [0, 0.55, 0], c); for (const s of [-1, 1]) for (const t of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16), new THREE.MeshStandardMaterial({ color: 0x111111 })); w.rotation.z = Math.PI / 2; w.position.set(s * 0.85, 0.25, t * 0.9); c.add(w); } const ms = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2.6, 12), new THREE.MeshStandardMaterial({ color: 0xd0d0d0, metalness: 0.7, roughness: 0.3 })); ms.rotation.x = Math.PI / 2; ms.position.y = 1.1; c.add(ms); }
   g.add(new THREE.HemisphereLight(0x8098b8, 0x302820, alert ? 0.8 : 1.1));
   const keyL = new THREE.DirectionalLight(0xfff0e0, alert ? 1.4 : 2.2); keyL.position.set(10, 20, 15); g.add(keyL);
@@ -347,7 +348,7 @@ function dressHangar(g, alert) {
   const wallT = IK.bulkheadTex({ base: "#353b43", accent: "#d8b020", th: tier, tw: 4.8, seed: 23, deck: "3", frame: 140 });
   // painted floor: pads, taxi lines to the tubes, hazard aprons, walkway lanes along the walls
   HANGAR_PADS.forEach(([x, z], i) => padDecal(g, x, z, i + 1));
-  const paint = (x, z, w, d, mk = "paintYellow") => K.box(w, 0.01, d, mk, [x, 0.012, z]);
+  const paint = (x, z, w, d, mk = "paintYellow") => K.box(w, 0.012, d, mk, [x, 0.02, z]);   // top at 0.026: clearly above the hazard aprons (0.015)
   for (const x of [-15, 0, 15]) { paint(x, -40, 0.3, 26); for (let z = -52; z < -28; z += 3) paint(x, z, 1.2, 0.25); }
   for (const x of [-14, 14]) paint(x, -16, 0.25, 10);
   for (const x of [-26.5, 26.5]) { paint(x, -10, 0.2, 86); }

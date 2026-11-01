@@ -192,7 +192,7 @@ input[type=text]:focus { outline: none; border-color: var(--amber); }
 .hs small { font-size: 11px; color: var(--amber); letter-spacing: .12em; text-transform: uppercase; }
 .hs.door { border-color: rgba(96,176,255,.6); }
 .hs.hidden { opacity: 0; pointer-events: none; }
-.hubcorner { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: max(16px, env(safe-area-inset-top, 0px)); display: flex; gap: 6px; }
+.hubcorner { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: max(16px, env(safe-area-inset-top, 0px)); display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 32px); }
 .btn.sm { font-size: 12px; padding: 7px 12px; }
 .talkbar, .choicebox { position: absolute; left: 50%; bottom: max(26px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(980px, calc(100% - 32px)); box-sizing: border-box; padding: 16px 22px 14px; background: linear-gradient(180deg, rgba(5,7,10,.78), rgba(5,7,10,.92)); border-top: 2px solid var(--amber); }
 .tbname, .cq { font-family: var(--f-display); color: var(--amber); letter-spacing: .08em; text-transform: uppercase; font-size: 15px; margin-bottom: 4px; }

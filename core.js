@@ -1817,6 +1817,17 @@ function stepFlight(dt) {
 }
 
 // ======================================================================= CAMERA + RENDER
+// Every shot is framed for 16:9. In a narrower window (a docked panel, a portrait tablet) a fixed vertical FOV crops the
+// sides of the frame; widen the vertical FOV just enough that the designed horizontal framing always fits.
+const DESIGN_ASPECT = 16 / 9;
+function fitFov(cam) {
+  const U = cam.userData;
+  if (U.adjFov === undefined || Math.abs(cam.fov - U.adjFov) > 1e-6) U.baseFov = cam.fov;   // a scene set a new FOV since last frame
+  let f = U.baseFov;
+  if (cam.aspect < DESIGN_ASPECT) f = Math.min(115, 2 * Math.atan(Math.tan(f * Math.PI / 360) * DESIGN_ASPECT / cam.aspect) * 180 / Math.PI);
+  if (Math.abs(cam.fov - f) > 1e-6 || U.adjAspect !== cam.aspect) { cam.fov = f; U.adjAspect = cam.aspect; cam.updateProjectionMatrix(); }
+  U.adjFov = cam.fov;
+}
 function render(dt, flight) {
   pt("renderPrep");
   const cam = C.camera;
@@ -1855,7 +1866,7 @@ function render(dt, flight) {
   if (C.camLock) { cam.position.copy(C.camLock.pos); cam.up.set(0, 1, 0); cam.lookAt(C.camLock.look); if (C.camLock.fov) { cam.fov = C.camLock.fov; cam.updateProjectionMatrix(); } }
   if (C.sunFx) { C.sunFx.position.copy(cam.position).addScaledVector(_a.copy(C.sun.position).normalize(), 90000); C.sunFx.visible = C.sun.intensity > 0.2 && !C.indoor; }
   if (C.stars) { const u = C.stars.material.uniforms; u.uTime.value += dt; u.uScale.value = C.renderer.getPixelRatio() * Math.max(1, C.H / 1000); }
-  syncBolts();
+  syncBolts(); fitFov(C.camera);
   pt("render3d"); C.composer.render(dt);
   pt("vdu");
   // target camera into the left screen (render target)

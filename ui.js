@@ -1278,6 +1278,11 @@ function simTick() {
 // ======================================================================= BOOT
 loadOpts();
 preloadPortraits();
+// in a narrow window the top-right menu would slide over the location header: drop it just below the header instead
+{ const chip = document.querySelector("#hub .hubchip"), corner = document.querySelector("#hub .hubcorner");
+  const fit = () => { if (!chip || !corner) return; corner.style.top = ""; const a = chip.getBoundingClientRect(), b = corner.getBoundingClientRect();
+    if (a.width && b.width && b.left < a.right + 8 && b.top < a.bottom) corner.style.top = Math.ceil(a.bottom + 8) + "px"; };
+  if (chip && corner) { addEventListener("resize", fit); if (window.ResizeObserver) { const ro = new ResizeObserver(fit); ro.observe(chip); ro.observe(corner); } } }
 init($("stage"));
 setStage("title");
 C.state = "menu";

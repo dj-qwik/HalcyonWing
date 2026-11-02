@@ -877,7 +877,7 @@ export function spawnGroup(g) {
 
 function hostiles(team = "concord", range = Infinity, fightersOnly = false) {
   const p = C.player.pos;
-  return C.ents.filter(e => e.alive && !e.comp && e.team !== team && !e.def.shearOnly && (!fightersOnly || !e.isCap) && (!e.isCap || e.comps.some(c => c.alive && c.kind === "turret") || e.def.launcher) && e.pos.distanceTo(p) < range);
+  return C.ents.filter(e => e.alive && !e.comp && e.team !== team && !e.invuln && !e.def.shearOnly && (!fightersOnly || !e.isCap) && (!e.isCap || e.comps.some(c => c.alive && c.kind === "turret") || e.def.launcher) && e.pos.distanceTo(p) < range);
 }
 function pendingSpawns() { const nav = C.mission.navs[C.navIdx]; return (nav.events || []).some(ev => ev.spawn && !C.fired.has(ev)); }
 
@@ -1247,7 +1247,7 @@ function gunTypes(s) { return [...new Set(s.guns.map(g => g.type))]; }
 function gunModeName(s) { const m = s.gunMode || 0; if (m === 0) return "FULL"; if (m === 1) return "SEQUENCE"; const t = gunTypes(s)[m - 2]; return t ? GUNS[t].name.toUpperCase() + " ONLY" : "FULL"; }
 function gunModeShort(s) { const m = s.gunMode || 0; if (m === 0) return "FULL"; if (m === 1) return "SEQ"; const t = gunTypes(s)[m - 2]; return t ? GUNS[t].name.split(" ")[0].toUpperCase() : "FULL"; }
 export function damage(t, amt, at, src, kind = "gun") {
-  if (!t.alive) return;
+  if (!t.alive || t.invuln) return;
   if (t.comp) { t.hp -= amt; spawnPart(at, tv(), 0.3, 3, 8, 0xffd080, 0x803010, 1, true); if (t.hp <= 0) killComp(t, src); return; }
   if (src && src.isPlayer) C.stats.hits++;
   if (t.isCap) {
@@ -1394,7 +1394,7 @@ function leadPoint(src, tgt, speed) {
 function nearestHostile(s, range = 6000, filt) {
   let best = null, bd = range;
   for (const e of C.ents) {
-    if (!e.alive || e.comp || e.team === s.team || e.cloaked || e.def.shearOnly) continue;
+    if (!e.alive || e.comp || e.team === s.team || e.cloaked || e.invuln || e.def.shearOnly) continue;
     if (filt && !filt(e)) continue;
     let d = e.pos.distanceTo(s.pos); if (e.isCap) d *= 2.2; if (e.isPlayer && s.team === "vharr") d *= 0.8;
     if (d < bd) { bd = d; best = e; }
@@ -1770,7 +1770,9 @@ ACTDEF.rescue = {
       if (it.state === "wait") {
         const d = e.pos.distanceTo(pl.pos); it.inRange = d < A.radius;
         if (it.inRange) { const was = it.prog; it.prog = Math.min(1, it.prog + dt / A.hold); if (Math.floor(it.prog * 5) !== Math.floor(was * 5)) sfx.cue("u_seek", 0.25, { rate: 1.1 }, 1100, 0.03, 0.05); } else it.prog = Math.max(0, it.prog - dt * 0.4);
-        if (it.prog >= 1) { it.state = "tow"; sfx.cue("u_lock", 0.5, {}, 1760, 0.2, 0.1, "sine"); C.msgs.push({ t: 2.5, text: "POD TAGGED — REELING IN" }); actSay((A.lines || [])[k]); }
+        if (it.prog >= 1) { sfx.cue("u_lock", 0.5, {}, 1760, 0.2, 0.1, "sine"); actSay((A.lines || [])[k]);
+          if (A.by) { it.state = "tow"; C.msgs.push({ t: 2.5, text: "POD TAGGED — REELING IN" }); }
+          else { it.state = "saved"; n++; C.stats.rescued = (C.stats.rescued || 0) + 1; C.msgs.push({ t: 2.5, text: `RESCUE BEACON SET  ${A.items.filter(x => x.state === "saved").length}/${A.items.length}` }); e.safe = true; continue; } }
       } else if (it.state === "tow") {
         const goal = by && by.alive ? by.pos : pl.pos; const to = _a.copy(goal).sub(e.pos), d = to.length();
         if (d < 45) { it.state = "saved"; n++; e.remove(); C.stats.rescued = (C.stats.rescued || 0) + 1; C.msgs.push({ t: 2.5, text: `POD ABOARD  ${A.items.filter(x => x.state === "saved").length}/${A.items.length}` }); continue; }
@@ -1850,6 +1852,69 @@ ACTDEF.sabotage = {
   },
   status(A) { if (A.done) return null; const pct = Math.min(100, Math.round(A.t / A.time * 100)); return { text: `${A.title} — TRANSMITTING ${pct}%`, bar: pct / 100, warn: true }; },
   marks(A) { return A.ent && A.ent.alive && !A.done ? [{ pos: A.ent.pos, label: (A.name || "RELAY").toUpperCase(), col: "#ff5040" }] : []; },
+};
+
+
+// --- gates: a checkpoint course of glowing rings, flown in order
+let _ringGeo = null;
+ACTDEF.gates = {
+  setup(A) {
+    if (!_ringGeo) _ringGeo = new THREE.TorusGeometry(1, 0.06, 8, 40);
+    const n = A.n || 8, step = A.step || 520, R = A.R; let p = new V3(0, 0, -300), dir = new V3(0, 0, -1);
+    for (let k = 0; k < n; k++) {
+      dir.applyAxisAngle(new V3(0, 1, 0), (R() * 2 - 1) * 0.55).applyAxisAngle(new V3(1, 0, 0), (R() * 2 - 1) * 0.25).normalize();
+      p = p.clone().addScaledVector(dir, step);
+      const m = new THREE.Mesh(_ringGeo, new THREE.MeshBasicMaterial({ color: 0x40d8ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const r = A.ring || 46; m.scale.setScalar(r); m.position.copy(p); m.lookAt(p.clone().add(dir)); C.world.add(m);
+      A.items.push({ obj: m, pos: m.position, r, done: false, dir: dir.clone() });
+    }
+    A.next = 0; A.t = 0;
+  },
+  update(A, dt) {
+    A.t += dt; const pl = C.player, it = A.items[A.next];
+    A.items.forEach((g, k) => { g.obj.material.opacity = g.done ? 0.06 : k === A.next ? 0.75 + 0.25 * Math.sin(C.t * 6) : 0.22; g.obj.material.color.setHex(k === A.next ? 0x7dffe8 : 0x40a8ff); });
+    if (!it) return;
+    const rel = _a.copy(pl.pos).sub(it.pos), along = rel.dot(it.dir), off = rel.addScaledVector(it.dir, -along).length();
+    if (Math.abs(along) < 30 && off < it.r) { it.done = true; A.next++; sfx.cue("u_lock", 0.4, {}, 1320 + A.next * 80, 0.12, 0.08, "sine"); C.msgs.push({ t: 1.2, text: `GATE ${A.next}/${A.items.length}` }); }
+    if (A.next >= A.items.length) { const par = A.par && A.t <= A.par; actResolve(A, true); actSay(par ? A.par_say || A.done_say : A.done_say); if (A.par) C.msgs.push({ t: 3, text: `COURSE ${A.t.toFixed(1)}s${par ? "  — UNDER PAR" : ""}` }); }
+  },
+  idle(A) { for (const g of A.items) g.obj.material.opacity = 0.05; },
+  status(A) { return `${A.title}  ${A.next}/${A.items.length}${A.par ? `   ${A.t.toFixed(0)}s / PAR ${A.par}s` : ""}`; },
+  marks(A) { const it = A.items[A.next]; return it ? [{ pos: it.pos, label: "GATE " + (A.next + 1), col: "#7dffe8" }] : []; },
+};
+
+// --- uplink: stay inside a zone (around a ship or a point) while it transmits; the meter only fills while you're in range
+ACTDEF.uplink = {
+  setup(A) { A.t = 0; A.radius = A.radius || 800; A.pos0 = A.pos ? new V3(...A.pos) : null; },
+  anchor(A) { if (A.at) { const e = C.ents.find(x => x.id === A.at); return e && e.alive ? e : null; } return { pos: A.pos0, alive: true }; },
+  update(A, dt) {
+    const an = this.anchor(A); if (!an) { actResolve(A, false); actSay(A.fail_say); return; }
+    A.pos = an.pos; const inR = an.pos.distanceTo(C.player.pos) < A.radius; A.inR = inR;
+    if (inR) { const was = A.t; A.t += dt; if (Math.floor(was / A.time * 10) !== Math.floor(A.t / A.time * 10)) sfx.cue("u_seek", 0.2, { rate: 1.2 }, 990, 0.03, 0.04); }
+    else if (!A.warned || C.t - A.warned > 6) { A.warned = C.t; C.msgs.push({ t: 2, text: "OUT OF UPLINK RANGE — CLOSE IN" }); }
+    if (A.t >= A.time) { actResolve(A, true); actSay(A.done_say); }
+  },
+  status(A) { return { text: `${A.title} — ${Math.min(100, Math.round(A.t / A.time * 100))}%${A.inR ? "" : "  (OUT OF RANGE)"}`, bar: Math.min(1, A.t / A.time), warn: !A.inR }; },
+  marks(A) { return A.pos && !A.done ? [{ pos: A.pos, label: A.label || "UPLINK", col: A.inR ? "#7dffa8" : "#ffb440", ring: A.inR }] : []; },
+};
+
+// --- disable: cripple a ship for capture. Hull below the line = engines out, it strikes its colours; destroy it and it's lost
+ACTDEF.disable = {
+  setup(A) { A.at = A.at || 0.35; },
+  update(A, dt) {
+    const e = C.ents.find(x => x.id === A.id); A.ent = e;
+    if (!e) return;
+    if (!e.alive) { actResolve(A, false); actSay(A.fail_say); return; }
+    if (A.escape && e.pos.length() > A.escape) { actResolve(A, false); actSay(A.escape_say); e.remove(); return; }
+    const f = e.isCap ? e.hull / e.hullMax : e.core / e.coreMax;
+    if (f <= A.at) {
+      e.speed = e.setSpeed = 0; e.vel && e.vel.set(0, 0, 0); e.team = "captured"; e.invuln = true; (e.comps || []).forEach(c => c.alive = false); for (const s of e.eng || (e.m && e.m.eng) || []) s.visible = false;
+      if (C.target === e) C.target = null; actResolve(A, true); actSay(A.done_say); C.msgs.push({ t: 3, text: "TARGET DISABLED — HOLD FIRE" });
+    }
+  },
+  status(A) { const e = A.ent; if (!e || !e.alive || A.done) return A.title; const f = e.isCap ? e.hull / e.hullMax : e.core / e.coreMax;
+    return { text: `${A.title} — HULL ${Math.round(f * 100)}%  (CRIPPLE AT ${Math.round(A.at * 100)}%)`, bar: Math.max(0, Math.min(1, (1 - f) / (1 - A.at))), warn: f < A.at + 0.15 }; },
+  marks(A) { return A.ent && A.ent.alive && !A.done ? [{ pos: A.ent.pos, label: "DISABLE", col: "#ffb440" }] : []; },
 };
 
 // HUD: objective panel (top left) and markers for every activity object

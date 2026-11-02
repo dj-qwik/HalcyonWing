@@ -1233,6 +1233,20 @@ const CAPS = {
     const out = capBuild(B, R, [[200, 20, 0, 1], [-200, 20, 0, 1], [100, 20, 173, 1], [-100, 20, -173, 1], [0, 187, 30, 1], [0, -193, -30, -1]], "vharr", 2);
     return { obj: out.g, turrets: out.turrets, eng: [] };
   },
+  relay() {
+    // Vharr hunt relay: a bone transmitter on a bulbous core, three antenna spines and a glowing emitter ring
+    const B = new Builder("vharr", 1);
+    B.add(G.lathe([[0, -30], [14, -26], [18, -14], [13, 0], [8, 26], [0, 34]], 8), "hull");
+    B.add(G.torus(22, 2.4, 32), "glow", [0, -6, 0], [Math.PI / 2, 0, 0]);
+    B.add(G.torus(24.5, 1.2, 32), "bone", [0, -6, 0], [Math.PI / 2, 0, 0]);
+    for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+      strut(B, [c * 9, 8, s * 9], [c * 34, 44, s * 34], 2.2, "bone", 5); B.add(G.cone(2.4, 16, 5), "bone", [c * 36, 54, s * 36]); B.add(G.sph(2.6, 10, 8), "glow", [c * 34.5, 45, s * 34.5]);
+      strut(B, [c * 12, -20, s * 12], [c * 26, -44, s * 26], 1.8, "dark", 5); B.add(G.cone(2, 12, 5), "bone", [c * 27, -50, s * 27], [Math.PI, 0, 0]); }
+    B.add(G.sph(18, 18, 8, 0, Math.PI * 2, 0, 0.9), "bone", [0, 42, 0], [Math.PI, 0, 0]);
+    B.add(G.cyl(1.4, 1.4, 40, 6), "dark", [0, 52, 0]); B.add(G.sph(3.2, 12, 8), "glow", [0, 73, 0]);
+    const g = B.build(); const em = engineSprite(0xff5020, 46); em.position.y = 73; g.add(em);
+    return { obj: g, turrets: [], eng: [], emit: em };
+  },
   node() {
     // Mantle Node: anchored tectonic spire on buttress legs, bone halo, collared core of molten light
     const B = new Builder("vharr", 1);
@@ -1253,6 +1267,13 @@ const CAPS = {
   },
 };
 
+// a dead hull for investigation: same model, burned dark, lights out, engines cold
+export function buildDerelict(type) {
+  const r = buildShip(type);
+  r.obj.traverse(o => { if (o.isSprite) o.visible = false;
+    if (o.isMesh && o.material) { const m = o.material.clone(); if (m.isMeshBasicMaterial) m.color.setRGB(0.05, 0.04, 0.035); else { if (m.color) m.color.multiplyScalar(0.42); if (m.emissive) m.emissive.setRGB(0, 0, 0); m.emissiveIntensity = 0; } o.material = m; } });
+  r.eng = []; return r;
+}
 export function buildShip(type) {
   let r;
   if (type === "shkara") r = FIGHTERS.vhaal("white");

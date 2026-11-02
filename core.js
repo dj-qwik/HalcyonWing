@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { SHIPS, GUNS, MISSILES, CAST } from "./story.js";
 import * as M from "./models.js";
 import { drawPortrait } from "./portraits.js";
@@ -748,6 +749,7 @@ export function startMission(mission, camp, onEnd) {
   C.navIdx = 0; C.result = null; C.dead = false; C.view = "cockpit"; C.comms = []; C.curComm = null; C.msgs = []; C.finaleT = undefined; C.carrierLostT = 0; C.sparkDone = false; C.ghost = null; C.scriptHold = false; C.commsOpen = false; C.dyingCaps = []; C.debris = []; C.t = 0;
   loadNav(0, true);
   prewarm(mission);
+  C.acts = []; C.extraGroups = {}; C.mines = null;
   C.state = "launch"; C.stateT = 0; C.paused = false; C.fade = 1; clearCracks(); C.hitDirs = []; C.kick = null; C.shake = 0; C.ckDmg = null;   // fade in, so the frames before the cockpit camera settles in the tube never show
   sfx.play("tense");
 }
@@ -781,6 +783,7 @@ function loadNav(i, first) {
   }
   for (const g of nav.groups || []) spawnGroup(g);
   setupNavBeacon(i);
+  setupActs(nav, i);
   if (nav.home) C.comms.push({ who: "comms", text: `${C.camp.callsign || "Vigil"}, Halcyon. We have you on scope. Request landing when ready.` });
   if (nav.start && first) { pl.pos.set(0, 0, 400); pl.speed = 0; pl.vel.set(0, 0, 0); C.tube = buildTube(); C.world.add(C.tube); C.wing.forEach((w, k) => { w.pos.set(k % 2 ? -60 : 60, 10, -250 - k * 40); }); }
   if (nav.env && nav.env.flakField) C.flak = 1;
@@ -884,7 +887,7 @@ function runEvents(dt) {
     if (C.fired.has(ev)) continue;
     let go = false;
     if (ev.at === "arrive") go = C.navT > 1.2;
-    else if (ev.at === "clear") go = C.navT > 3 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns();
+    else if (ev.at === "clear") go = C.navT > 3 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns() && !actsPending();
     else if (ev.at.startsWith("t:")) go = C.navT > +ev.at.slice(2);
     else if (ev.at.startsWith("dead:")) go = C.stats.deadIds.has(ev.at.slice(5));
     if (!go) continue;
@@ -996,6 +999,8 @@ export function evaluate(landed) {
   }
   if (ms.defend) { const ok = !!(C.stats.navs[0] || {}).cleared; out.push(["Repel the attack", ok]); if (!ok) critical = false; }
   if (ms.id === "m6") { critical = !!(C.stats.navs[1] || {}).cleared; }
+  ms.navs.forEach((nav, i) => { for (const a of (C.stats.navs[i] || {}).acts || []) out.push([`${nav.name}: ${a.title.toLowerCase()}${a.optional ? " (bonus)" : ""}`, a.ok]); });
+  if (C.stats.salvage) out.push([`Cargo salvaged: ${C.stats.salvage}`, true]);
   const visitedAll = ms.navs.every((n, i) => C.stats.navs[i] && C.stats.navs[i].visited) || ms.defend || ms.final;
   out.push(["Complete all nav points", visitedAll]);
   if (!ms.final) out.push(["Land safely aboard the Halcyon", !!landed]);
@@ -1362,6 +1367,7 @@ function updBolts(dt) {
       if (e.isCap) { if (e === b.owner) continue; if (insideCap(e, b.pos)) { hit = e; for (const c of e.comps) if (c.alive && c.pos.distanceTo(b.pos) < c.radius * 1.6) { hit = c; break; } break; } continue; }
       if (segDist(e.pos, prev, b.pos) < (b.owner && b.owner.isPlayer ? Math.max(14, e.radius * 2.4) : e.radius * 0.85)) { hit = e; break; }   // arcade: the player's shots get a generous hit zone
     }
+    if (!hit && C.mines && boltMine(prev, b.pos)) { b.life = 0; b.m.visible = false; continue; }
     if (!hit) for (const m of C.missiles) if ((m.type === "torp") && m.team !== b.team && segDist(m.pos, prev, b.pos) < 7) { m.hp -= b.dmg; if (m.hp <= 0) { m.dead = true; C.world.remove(m.mesh); explode(m.pos, 12); } b.life = 0; b.m.visible = false; break; }
     if (hit) {
       if (hit.team === "concord" && b.owner && b.owner.isPlayer && hit.wingman && Math.random() < 0.2) C.comms.push({ who: hit.pilot, text: pick(["Watch your fire!", "Hey! I'm on your side!", "Check your fire, Lieutenant!"]) });
@@ -1662,12 +1668,223 @@ function doComms(n) {
 }
 function boundKey(id) { const c = (binds.kb[id] || []).find(Boolean); if (!c) return "?"; return c.replace(/^Ctrl\+/, "Ctrl+").replace(/^Key/, "").replace(/^Digit/, "").replace(/^Numpad/, "Num "); }
 // tell the player how to move on: the mission advances by autopilot, which isn't obvious to a newcomer
+
+// ======================================================================= NAV ACTIVITIES
+// Data-driven side tasks a nav point can carry (nav.act = [...]): scan derelicts, rescue lifepods, salvage cargo,
+// minefields, and timed sabotage. Required ones hold the nav "unsecured" until they resolve.
+const ACTDEF = {};
+const actRand = (seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
+function actSay(lines) { for (const [w, t] of lines || []) C.comms.push({ who: w, text: t.replace("{rank}", C.camp && C.camp.callsign || "rookie") }); }
+function actSpot(R, spread, nearZ = 0.45) { return new V3((R() * 2 - 1) * spread * 0.8, (R() * 2 - 1) * spread * 0.22, -(nearZ + R() * (1 - nearZ)) * spread); }
+function setupActs(nav, i) {
+  C.acts = [];
+  for (const spec of nav.act || []) { const A = { ...spec, items: [], done: false, failed: false, t: 0, nav: i, R: actRand(1000 + i * 97 + (spec.seed || 0)) }; ACTDEF[A.type].setup(A, nav); C.acts.push(A); }
+  for (const g of (C.extraGroups && C.extraGroups[i]) || []) spawnGroup(g);   // consequences carried over from an earlier nav
+}
+function actsPending() { return (C.acts || []).some(A => A.required !== false && !A.done && !A.failed); }
+function updActs(dt) { for (const A of C.acts || []) { const D = ACTDEF[A.type]; if (!A.done && !A.failed) D.update(A, dt); else if (D.idle) D.idle(A, dt); } }
+function actResolve(A, ok) {
+  if (ok) A.done = true; else A.failed = true;
+  const st = C.stats.navs[A.nav] = C.stats.navs[A.nav] || {}; (st.acts = st.acts || []).push({ title: A.title, ok, optional: A.required === false });
+}
+function spinTick(it, dt) { if (it.spin) { it.obj.rotation.x += it.spin.x * dt; it.obj.rotation.y += it.spin.y * dt; it.obj.rotation.z += it.spin.z * dt; } }
+
+// --- scan & investigate: fly close and hold inside the scan radius until the sweep completes
+ACTDEF.scan = {
+  setup(A) {
+    const models = A.models || ["transport"]; A.radius = A.radius || 160; A.hold = A.hold || 3;
+    for (let k = 0; k < (A.n || models.length); k++) {
+      const r = M.buildDerelict(models[k % models.length]); const p = actSpot(A.R, A.spread || 2600);
+      r.obj.position.copy(p); r.obj.rotation.set(A.R() * 6, A.R() * 6, A.R() * 6); C.world.add(r.obj);
+      A.items.push({ obj: r.obj, pos: r.obj.position, prog: 0, done: false, label: (A.labels || [])[k] || "SCAN", spin: new V3(A.R() - 0.5, A.R() - 0.5, A.R() - 0.5).multiplyScalar(0.06), size: Math.max(20, (r.radius || 30)) });
+    }
+  },
+  update(A, dt) {
+    const pl = C.player; let n = 0;
+    for (const [k, it] of A.items.entries()) {
+      spinTick(it, dt);
+      if (it.done) { n++; continue; }
+      const d = it.pos.distanceTo(pl.pos), r = A.radius + it.size;
+      if (d < r) { const was = it.prog; it.prog = Math.min(1, it.prog + dt / A.hold); if (Math.floor(it.prog * 6) !== Math.floor(was * 6)) sfx.cue("u_seek", 0.25, { rate: 0.9 }, 990, 0.03, 0.05); }
+      else it.prog = Math.max(0, it.prog - dt * 0.25);
+      it.inRange = d < r;
+      if (it.prog >= 1) {
+        it.done = true; n++; sfx.cue("u_lock", 0.5, {}, 1560, 0.2, 0.1, "sine");
+        C.msgs.push({ t: 2.5, text: `SCAN COMPLETE  ${A.items.filter(x => x.done).length}/${A.items.length}` });
+        actSay((A.lines || [])[k]);
+        if (A.ambush && A.items.filter(x => x.done).length === A.ambush.after) { actSay(A.ambush.say); (A.ambush.spawn || []).forEach(g => spawnGroup(g)); }
+      }
+    }
+    if (n === A.items.length) { actResolve(A, true); actSay(A.done_say); }
+  },
+  idle(A, dt) { for (const it of A.items) spinTick(it, dt); },
+  status(A) { const n = A.items.filter(x => x.done).length; return `${A.title}  ${n}/${A.items.length}`; },
+  marks(A) { return A.items.filter(it => !it.done).map(it => ({ pos: it.pos, label: it.label, col: "#78e0ff", prog: it.prog, ring: it.inRange })); },
+};
+
+// --- salvage: drifting cargo pods; fly through one to haul it aboard (missiles, decoys, fuel)
+let _crateGeo = null, _crateMats = null;
+function crateMesh() {
+  if (!_crateGeo) { _crateGeo = new THREE.BoxGeometry(5, 3.2, 3.2); _crateMats = [new THREE.MeshStandardMaterial({ color: 0x6a6450, roughness: 0.6, metalness: 0.5 }), new THREE.MeshBasicMaterial({ color: 0xffb040 })]; }
+  const g = new THREE.Group(); g.add(new THREE.Mesh(_crateGeo, _crateMats[0]));
+  for (const x of [-1.6, 1.6]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.3, 3.3), _crateMats[1]); b.position.x = x; g.add(b); }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: 0xffb040, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); s.scale.setScalar(7); g.add(s); g.userData.glow = s; return g;
+}
+ACTDEF.salvage = {
+  setup(A) { A.required = A.required ?? false;
+    for (let k = 0; k < (A.n || 4); k++) { const g = crateMesh(); g.position.copy(actSpot(A.R, A.spread || 1800, 0.25)); g.rotation.set(A.R() * 6, A.R() * 6, 0); C.world.add(g);
+      A.items.push({ obj: g, pos: g.position, done: false, spin: new V3(A.R() - 0.5, A.R() - 0.5, A.R() - 0.5).multiplyScalar(0.5), label: "CARGO" }); } },
+  update(A, dt) {
+    const pl = C.player; let n = 0;
+    for (const it of A.items) {
+      spinTick(it, dt); if (it.done) { n++; continue; }
+      const gl = it.obj.userData.glow; const d = it.pos.distanceTo(C.camera.position); gl.scale.setScalar(Math.max(7, 12 * d * Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight)));
+      if (it.pos.distanceTo(pl.pos) < (A.radius || 34)) { it.done = true; n++; C.world.remove(it.obj); this.reward(A); }
+    }
+    if (n === A.items.length) { actResolve(A, true); actSay(A.done_say); }
+  },
+  reward(A) {
+    const pl = C.player, caps = C.mission.loadout || pl.def.missiles || {}, got = [];
+    const short = Object.keys(caps).filter(k => (pl.mis[k] || 0) < caps[k]);
+    if (short.length) { const k = short[Math.floor(Math.random() * short.length)]; pl.mis[k] = (pl.mis[k] || 0) + 1; got.push("+1 " + (MISSILES[k] ? MISSILES[k].short : k)); }
+    if (pl.decoys < (pl.def.decoys || 0)) { pl.decoys = Math.min(pl.def.decoys, pl.decoys + 2); got.push("+2 DECOYS"); }
+    if (pl.fuel < pl.fuelMax) { pl.fuel = Math.min(pl.fuelMax, pl.fuel + pl.fuelMax * 0.2); got.push("+FUEL"); }
+    sfx.cue("u_missel", 0.55, {}, 1320); C.msgs.push({ t: 2.5, text: "SALVAGE  " + (got.join("  ") || "HOLD FULL") }); C.stats.salvage = (C.stats.salvage || 0) + 1;
+  },
+  idle(A, dt) { for (const it of A.items) spinTick(it, dt); },
+  status(A) { const n = A.items.filter(x => x.done).length; return `${A.title}  ${n}/${A.items.length}`; },
+  marks(A) { return A.items.filter(it => !it.done).map(it => ({ pos: it.pos, label: it.label, col: "#ffb440" })); },
+};
+
+// --- rescue: fly up to each lifepod and hold to tag it; the rescue ship then reels it in
+ACTDEF.rescue = {
+  setup(A) { A.hold = A.hold || 1.6; A.radius = A.radius || 90; A.items = (A.ids || []).map(id => ({ id, prog: 0, state: "wait" })); },
+  ent(id) { return C.ents.find(e => e.id === id); },
+  update(A, dt) {
+    const pl = C.player, by = this.ent(A.by); let n = 0;
+    for (const [k, it] of A.items.entries()) {
+      const e = this.ent(it.id);
+      if (it.state === "saved" || it.state === "lost") { n++; continue; }
+      if (!e || !e.alive) { it.state = "lost"; n++; continue; }
+      it.pos = e.pos;
+      if (it.state === "wait") {
+        const d = e.pos.distanceTo(pl.pos); it.inRange = d < A.radius;
+        if (it.inRange) { const was = it.prog; it.prog = Math.min(1, it.prog + dt / A.hold); if (Math.floor(it.prog * 5) !== Math.floor(was * 5)) sfx.cue("u_seek", 0.25, { rate: 1.1 }, 1100, 0.03, 0.05); } else it.prog = Math.max(0, it.prog - dt * 0.4);
+        if (it.prog >= 1) { it.state = "tow"; sfx.cue("u_lock", 0.5, {}, 1760, 0.2, 0.1, "sine"); C.msgs.push({ t: 2.5, text: "POD TAGGED — REELING IN" }); actSay((A.lines || [])[k]); }
+      } else if (it.state === "tow") {
+        const goal = by && by.alive ? by.pos : pl.pos; const to = _a.copy(goal).sub(e.pos), d = to.length();
+        if (d < 45) { it.state = "saved"; n++; e.remove(); C.stats.rescued = (C.stats.rescued || 0) + 1; C.msgs.push({ t: 2.5, text: `POD ABOARD  ${A.items.filter(x => x.state === "saved").length}/${A.items.length}` }); continue; }
+        e.pos.addScaledVector(to.normalize(), Math.min(d, 85 * dt));
+      }
+    }
+    if (n === A.items.length) { const saved = A.items.filter(x => x.state === "saved").length; actResolve(A, saved > 0); actSay(saved === A.items.length ? A.done_say : A.part_say); }
+  },
+  status(A) { const s = A.items.filter(x => x.state === "saved").length, t = A.items.filter(x => x.state === "tow").length; return `${A.title}  ${s}/${A.items.length}${t ? `  (${t} IN TOW)` : ""}`; },
+  marks(A) { return A.items.filter(it => it.state === "wait" && it.pos).map(it => ({ pos: it.pos, label: "POD", col: "#7dffa8", prog: it.prog, ring: it.inRange })); },
+};
+
+// --- hazards: a minefield (on the route to the next nav, or here). Proximity mines arm, beep and blow; shoot them first.
+let _mineGeo = null, _mineMat = null;
+function mineMesh() {
+  if (!_mineGeo) { const parts = [new THREE.SphereGeometry(2.2, 14, 10)]; for (let k = 0; k < 10; k++) { const c = new THREE.ConeGeometry(0.35, 1.6, 6); c.translate(0, 2.6, 0); const q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), new V3(Math.sin(k * 2.4) * Math.cos(k * 1.3), Math.cos(k * 2.4), Math.sin(k * 2.4) * Math.sin(k * 1.3)).normalize()); c.applyQuaternion(q); parts.push(c); }
+    for (const g of parts) { if (g.index) { const ng = g.toNonIndexed(); parts[parts.indexOf(g)] = ng; } }
+    _mineGeo = mergeGeometries(parts.map(g => { for (const k of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(k)) g.deleteAttribute(k); return g; }), false);
+    _mineMat = new THREE.MeshStandardMaterial({ color: 0x3a1c16, roughness: 0.5, metalness: 0.7 }); }
+  const g = new THREE.Group(); g.add(new THREE.Mesh(_mineGeo, _mineMat));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.tex().glow, color: 0xff3020, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); s.scale.setScalar(4); g.add(s); g.userData.lamp = s; return g;
+}
+ACTDEF.mines = {
+  setup(A) {
+    A.required = A.clearN ? (A.required ?? true) : false;
+    const B = C.navBeacon, R = A.radius || 700;
+    const c = A.at === "route" && B ? B.pos.clone().multiplyScalar(A.along || 0.55) : new V3(0, 0, -(A.ahead || 1600));
+    A.center = c; A.R = A.R || actRand(5);
+    const fwd = A.at === "route" && B ? B.pos.clone().normalize() : new V3(0, 0, -1);
+    for (let k = 0; k < (A.n || 30); k++) {
+      const g = mineMesh(); const v = new V3(A.R() * 2 - 1, (A.R() * 2 - 1) * 0.45, A.R() * 2 - 1).multiplyScalar(R);
+      v.addScaledVector(fwd, -v.dot(fwd) * 0.75);   // a wall across the lane, not a ball
+      g.position.copy(c).add(v); C.world.add(g);
+      A.items.push({ obj: g, pos: g.position, armed: 0, dead: false, marked: k < (A.clearN || 0), ph: A.R() * 6 });
+    }
+    C.mines = A;
+  },
+  update(A, dt) {
+    const pl = C.player;
+    for (const it of A.items) {
+      if (it.dead) continue;
+      const lamp = it.obj.userData.lamp, dc = it.pos.distanceTo(C.camera.position), k = Math.tan(C.camera.fov * Math.PI / 360) * 2 / Math.max(1, C.H || innerHeight);
+      it.ph += dt * (it.armed ? 14 : 2.2); lamp.material.opacity = Math.sin(it.ph) > 0 ? 1 : 0.15; lamp.scale.setScalar(Math.max(4, 7 * dc * k) * (it.marked ? 1.5 : 1));
+      it.obj.rotation.y += dt * 0.4;
+      if (!it.armed) { for (const e of C.ents) { if (!e.alive || e.isCap || e.comp) continue; if (e.pos.distanceTo(it.pos) < 55) { it.armed = 0.55; if (e === pl) { sfx.cue("u_unavail", 0.5, {}, 880, 0.08); C.msgs.push({ t: 1, text: "PROXIMITY MINE" }); } break; } } }
+      else { it.armed -= dt; if (it.armed <= 0) this.blow(A, it, false); }
+    }
+    if (A.clearN && A.items.filter(it => it.marked && it.dead).length >= A.clearN) { actResolve(A, true); actSay(A.done_say); }
+  },
+  blow(A, it, shot) {
+    if (it.dead) return; it.dead = true; C.world.remove(it.obj); explode(it.pos, 22, 0xff7030);
+    if (shot) C.stats.minesShot = (C.stats.minesShot || 0) + 1;
+    for (const e of C.ents) { if (!e.alive || e.comp) continue; const d = e.pos.distanceTo(it.pos); if (d < 75) damage(e, 70 * (1 - d / 75) + 15, it.pos.clone(), null, "mine"); }
+    for (const o of A.items) if (!o.dead && o !== it && o.pos.distanceTo(it.pos) < 38) o.armed = o.armed || 0.25;   // sympathetic detonation
+  },
+  idle(A, dt) { this.update(A, dt); },
+  status(A) { if (!A.clearN) return null; const n = A.items.filter(it => it.marked && it.dead).length; return `${A.title}  ${Math.min(n, A.clearN)}/${A.clearN}`; },
+  marks(A) { const pl = C.player; return A.items.filter(it => !it.dead && (it.marked || it.pos.distanceTo(pl.pos) < 900)).map(it => ({ pos: it.pos, label: it.marked ? "MINE" : "", col: "#ff5040", small: !it.marked })); },
+};
+// bolts can set mines off
+function boltMine(prev, pos) { const A = C.mines; if (!A || C.acts.indexOf(A) < 0) return false; for (const it of A.items) if (!it.dead && segDist(it.pos, prev, pos) < 5) { ACTDEF.mines.blow(A, it, true); return true; } return false; }
+
+// --- timed sabotage: kill the relay before its transmission completes, or the next nav pays for it
+ACTDEF.sabotage = {
+  setup(A) {
+    const pos = A.pos ? new V3(...A.pos) : actSpot(A.R, 2400, 0.7);
+    const r = spawnGroup({ type: A.model || "relay", n: 1, id: A.id || "relay", pos: pos.toArray() }); A.ent = r && r[0];
+    if (A.ent && A.name) A.ent.name = A.name;
+    A.time = A.time || 70; A.t = 0;
+  },
+  update(A, dt) {
+    const e = A.ent; if (!e || !e.alive) { actResolve(A, true); actSay(A.done_say); return; }
+    A.t += dt; const k = A.t / A.time;
+    if (e.m && e.m.emit) { const s = 46 * (1 + 0.6 * Math.abs(Math.sin(C.t * (3 + k * 9)))); e.m.emit.scale.setScalar(s); }
+    if (Math.floor(k * 10) !== Math.floor((A.t - dt) / A.time * 10) && k < 1) sfx.cue("u_seek", 0.2, { rate: 0.7 }, 660, 0.05, 0.05);
+    if (k >= 1) { actResolve(A, false); actSay(A.fail_say); (A.fail_spawn || []).forEach(g => spawnGroup(g)); if (A.fail_next) { C.extraGroups = C.extraGroups || {}; C.extraGroups[A.nav + 1] = (C.extraGroups[A.nav + 1] || []).concat(A.fail_next); } C.msgs.push({ t: 3, text: "TRANSMISSION COMPLETE" }); }
+  },
+  status(A) { if (A.done) return null; const pct = Math.min(100, Math.round(A.t / A.time * 100)); return { text: `${A.title} — TRANSMITTING ${pct}%`, bar: pct / 100, warn: true }; },
+  marks(A) { return A.ent && A.ent.alive && !A.done ? [{ pos: A.ent.pos, label: (A.name || "RELAY").toUpperCase(), col: "#ff5040" }] : []; },
+};
+
+// HUD: objective panel (top left) and markers for every activity object
+function drawActs(x, W, H) {
+  if (!C.acts || !C.acts.length || C.state !== "flight") return;
+  let y = 64; x.textAlign = "left"; x.font = "bold 13px 'Share Tech Mono', monospace";
+  for (const A of C.acts) {
+    const D = ACTDEF[A.type]; const st = D.status ? D.status(A) : null; if (!st && !A.done) continue;
+    const o = typeof st === "string" || !st ? { text: st || A.title } : st;
+    const col = A.failed ? "#ff5040" : A.done ? "#7dffa8" : o.warn ? "#ffb440" : "#78e0ff";
+    x.fillStyle = "rgba(0,0,0,.45)"; x.fillRect(16, y - 14, 330, o.bar !== undefined ? 30 : 20);
+    x.fillStyle = col; x.fillText((A.done ? "✓ " : A.failed ? "✗ " : "◆ ") + (A.done || A.failed ? A.title : o.text), 24, y);
+    if (o.bar !== undefined && !A.done && !A.failed) { x.fillStyle = "rgba(255,180,64,.25)"; x.fillRect(24, y + 5, 300, 6); x.fillStyle = o.bar > 0.75 ? "#ff5040" : "#ffb440"; x.fillRect(24, y + 5, 300 * o.bar, 6); y += 10; }
+    y += 24;
+  }
+  const pl = C.player;
+  for (const A of C.acts) { const D = ACTDEF[A.type]; if (!D.marks || A.failed) continue;
+    for (const m of D.marks(A)) {
+      const p = proj(m.pos); const d = m.pos.distanceTo(pl.pos); x.strokeStyle = m.col; x.fillStyle = m.col; x.lineWidth = 1.5;
+      if (p.behind || p.x < 20 || p.x > W - 20 || p.y < 20 || p.y > H - 20) continue;
+      if (m.small) { x.globalAlpha = 0.7; x.beginPath(); x.moveTo(p.x - 4, p.y - 4); x.lineTo(p.x + 4, p.y + 4); x.moveTo(p.x + 4, p.y - 4); x.lineTo(p.x - 4, p.y + 4); x.stroke(); x.globalAlpha = 1; continue; }
+      x.beginPath(); x.moveTo(p.x, p.y - 9); x.lineTo(p.x + 9, p.y); x.lineTo(p.x, p.y + 9); x.lineTo(p.x - 9, p.y); x.closePath(); x.stroke();
+      if (m.prog > 0) { x.lineWidth = 3; x.beginPath(); x.arc(p.x, p.y, 16, -Math.PI / 2, -Math.PI / 2 + m.prog * Math.PI * 2); x.stroke(); x.lineWidth = 1.5; }
+      if (m.ring) { x.globalAlpha = 0.5; x.beginPath(); x.arc(p.x, p.y, 22, 0, 7); x.stroke(); x.globalAlpha = 1; }
+      x.font = "11px 'Share Tech Mono', monospace"; x.textAlign = "center"; x.fillText(`${m.label}  ${(d / 1000 * 2).toFixed(1)}km`, p.x, p.y - 15);
+    }
+  }
+}
+
 // ---------- flying to the next nav point by hand (autopilot is the optional shortcut)
 const NAV_LEG = 7000;   // ~14 km on the HUD: about half a minute at cruise, a quarter of that on afterburner
 // compile every shader the mission will need while it fades in, so the first bandit, bolt or explosion doesn't hitch
 function prewarm(ms) {
   try {
-    const types = new Set([ms.ship]); for (const n of ms.navs) { for (const g of n.groups || []) types.add(g.type); for (const f of n.friends || []) types.add(f.type); }
+    const types = new Set([ms.ship]); for (const n of ms.navs) { for (const g of n.groups || []) types.add(g.type); for (const f of n.friends || []) types.add(f.type); for (const a of n.act || []) { if (a.type === "sabotage") types.add(a.model || "relay"); for (const t of a.models || []) types.add(t); } }
     const tmp = new THREE.Group(); C.world.add(tmp);
     for (const t of types) { if (!SHIPS[t]) continue; const m = M.buildShip(t); m.obj.position.set(0, -1e5, 0); tmp.add(m.obj); }
     const cv = C.cockpit.visible; C.cockpit.visible = true; C.renderer.compile(C.scene, C.camera); C.cockpit.visible = cv;
@@ -1703,7 +1920,7 @@ function navTravel(dt) {
   if (C.state !== "flight") return;
   if (C.enroute && !C.enroute.done && 1 - d / B.d0 > C.enroute.at && autoAvailable()) enrouteContact();
   if (d < 700) {
-    if (!autoAvailable()) { if (!B.warned) { B.warned = true; C.msgs.push({ t: 3, text: "NAV POINT LOCKED — CLEAR HOSTILES" }); } return; }
+    if (!autoAvailable()) { if (!B.warned) { B.warned = true; C.msgs.push({ t: 3, text: actsPending() ? "NAV POINT LOCKED — COMPLETE THE OBJECTIVE" : "NAV POINT LOCKED — CLEAR HOSTILES" }); } return; }
     C.msgs.push({ t: 3, text: "ARRIVING — " + B.name.toUpperCase() }); sfx.whoosh(1.6);
     loadNav(C.navIdx + 1); C.fade = 1;
   }
@@ -1720,7 +1937,7 @@ function autoNag(dt) {
 function autoAvailable() {
   if (C.scriptHold) return false;
   const hs = hostiles("concord", 7000).filter(e => !e.isCap || e.pos.distanceTo(C.player.pos) < 2500);
-  return hs.length === 0 && !pendingSpawns() && C.navT > 3;
+  return hs.length === 0 && !pendingSpawns() && !actsPending() && C.navT > 3;
 }
 function tryAutopilot() {
   const ms = C.mission, nav = ms.navs[C.navIdx];
@@ -1793,12 +2010,12 @@ function stepFlight(dt) {
   if (C.state === "ended") return;
   for (const e of C.ents) { if (!e.alive || e.isPlayer) continue; if (e.comp) { e.update(); continue; } if (e.isCap) aiCapital(e, dt); else if (C.state === "flight") aiFighter(e, dt); }
   if (C.state === "flight") {
-    runEvents(dt); autoNag(dt); navTravel(dt);
+    runEvents(dt); updActs(dt); autoNag(dt); navTravel(dt);
     if (ms.script === "ghost") ghostTick(dt);
     updBolts(dt); updGlints(); updMissiles(dt); updDecoys(dt); updDebris(dt);
     // nav cleared tracking
     const nav = ms.navs[C.navIdx];
-    if (!C.cleared && !C.scriptHold && C.navT > 2 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns()) {
+    if (!C.cleared && !C.scriptHold && C.navT > 2 && hostiles("concord", Infinity, true).length === 0 && !pendingSpawns() && !actsPending()) {
       const capsLeft = nav.obj === "destroy" ? !C.stats.deadIds.has(nav.target) : false;
       if (!capsLeft) { C.cleared = true; C.stats.navs[C.navIdx].cleared = true; if (nav.obj && nav.obj !== "none" && !nav.home) C.msgs.push({ t: 3, text: ms.defend ? "AREA SECURE — REQUEST LANDING" : "NAV " + C.navIdx + " SECURE — FLY TO THE NAV MARKER OR AUTOPILOT" }); }
     }
@@ -1979,13 +2196,14 @@ function drawHUD(flight) {
       const lbl = `${B.name.toUpperCase()}  ${(d / 1000 * 2).toFixed(1)}km`, p = proj(B.pos); x.strokeStyle = nc; x.fillStyle = nc; x.lineWidth = 2; x.font = "12px 'Share Tech Mono', monospace";
       if (!p.behind && p.x > 30 && p.x < W - 30 && p.y > 30 && p.y < H - 30) {
         x.beginPath(); x.moveTo(p.x, p.y - 12); x.lineTo(p.x + 12, p.y); x.lineTo(p.x, p.y + 12); x.lineTo(p.x - 12, p.y); x.closePath(); x.stroke(); x.strokeRect(p.x - 3, p.y - 3, 6, 6);
-        x.textAlign = "center"; x.fillText(lbl, p.x, p.y - 18); if (!ok) x.fillText("CLEAR AREA", p.x, p.y + 28);
+        x.textAlign = "center"; x.fillText(lbl, p.x, p.y - 18); if (!ok) x.fillText(actsPending() ? "OBJECTIVE" : "CLEAR AREA", p.x, p.y + 28);
       } else {   // off screen: an arrow on the edge pointing the way
         const v = B.pos.clone().applyMatrix4(C.camera.matrixWorldInverse); let ax = v.x, ay = -v.y; if (v.z > 0 && Math.hypot(ax, ay) < 1e-3) ay = 1; const a = Math.atan2(ay, ax);
         const rx = W / 2 - 60, ry = H / 2 - 60, ex = W / 2 + Math.cos(a) * rx, ey = H / 2 + Math.sin(a) * ry;
         x.save(); x.translate(ex, ey); x.rotate(a); x.beginPath(); x.moveTo(14, 0); x.lineTo(-8, -9); x.lineTo(-8, 9); x.closePath(); x.fill(); x.restore();
         x.textAlign = "center"; x.fillText(lbl, ex - Math.cos(a) * 34, ey - Math.sin(a) * 22);
       } }
+    drawActs(x, W, H);
     // ship markers
     for (const e of C.ents) {
       if (!e.alive || e === pl || e.comp) continue;
@@ -2041,7 +2259,7 @@ function drawHUD(flight) {
     x.textAlign = "left"; x.fillStyle = AMBER; x.font = "600 15px 'Share Tech Mono', monospace";
     x.textAlign = "right"; x.fillText(`${C.mission.navs[C.navIdx].name.toUpperCase()}`, W - 24, 30);
     if (nav.home || C.mission.defend) { x.fillStyle = GREEN; x.fillText(`[${boundKey("auto")}] LAND`, W - 24, 50); }
-    else if (C.mission.navs[C.navIdx + 1] && C.state === "flight") { const ok = autoAvailable(); x.fillStyle = ok ? GREEN : "rgba(255,180,64,.55)"; x.fillText(ok ? `[${boundKey("auto")}] AUTOPILOT → ${C.mission.navs[C.navIdx + 1].name.toUpperCase()}` : "AUTOPILOT LOCKED — HOSTILES", W - 24, 50); }
+    else if (C.mission.navs[C.navIdx + 1] && C.state === "flight") { const ok = autoAvailable(); x.fillStyle = ok ? GREEN : "rgba(255,180,64,.55)"; x.fillText(ok ? `[${boundKey("auto")}] AUTOPILOT → ${C.mission.navs[C.navIdx + 1].name.toUpperCase()}` : (actsPending() ? "AUTOPILOT LOCKED — OBJECTIVE" : "AUTOPILOT LOCKED — HOSTILES"), W - 24, 50); }
     if (pl.cloaked) { x.fillStyle = CYAN; x.textAlign = "center"; x.fillText("◈ CLOAKED ◈", W / 2, 34); }
     // energy & fuel bars
     // warnings
